@@ -731,7 +731,7 @@ const handleKeydown = (e) => {
   <div class="editor-layout">
     <el-header class="app-header">
       <div class="logo">
-        <el-icon :size="24" color="#1890FF"><Edit /></el-icon>
+        <img src="/icon.png" alt="logo" width="32" height="32" />
         <span class="title">Vue3 图片编辑器</span>
       </div>
 
