@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import { useStore } from 'vuex'
-import { Edit, RefreshLeft, RefreshRight, Download, Upload, Picture } from '@element-plus/icons-vue'
+import { Edit, RefreshLeft, RefreshRight, Download, Upload, Picture, ZoomIn, ZoomOut, Aim } from '@element-plus/icons-vue'
 import Toolbar from './Toolbar.vue'
 import PropertyPanel from './PropertyPanel.vue'
 import LayerPanel from './LayerPanel.vue'
@@ -18,6 +18,14 @@ const canvasManager = ref(null)
 // 状态管理
 const isInitialized = ref(false)
 const showNewCanvasDialog = ref(false)
+const zoom = ref(1)
+const isZoomInputFocused = ref(false)
+const zoomInputVal = ref(100)
+const isMouseOverCanvas = ref(false)
+
+watch(zoom, (newVal) => {
+  zoomInputVal.value = Math.round(newVal * 100)
+})
 
 // 历史记录状态（仅用于 UI 显示）
 const historyLength = ref(0)
@@ -52,12 +60,59 @@ const initCanvas = (options = {}) => {
 
   canvasManager.value.init(options)
   isInitialized.value = true
+
+  // 自适应屏幕
+  fitCanvasToScreen()
+}
+
+// 自适应画布到屏幕
+const fitCanvasToScreen = () => {
+  if (!canvasManager.value) return
+
+  // 使用 nextTick 确保 DOM 布局已完成
+  nextTick(() => {
+    const viewport = document.querySelector('.canvas-viewport')
+    if (!viewport) return
+
+    // 获取容器尺寸，减去内边距 (padding: 40px)
+    const padding = 80
+    const containerWidth = viewport.clientWidth - padding
+    const containerHeight = viewport.clientHeight - padding
+
+    if (containerWidth <= 0 || containerHeight <= 0) return
+
+    const canvasWidth = canvasManager.value.originalWidth
+    const canvasHeight = canvasManager.value.originalHeight
+
+    if (!canvasWidth || !canvasHeight) return
+
+    // 计算适配比例
+    const scaleX = containerWidth / canvasWidth
+    const scaleY = containerHeight / canvasHeight
+    let newZoom = Math.min(scaleX, scaleY)
+
+    // 如果计算出的缩放比例大于1（说明画布比容器小），则限制为1（保持原样），避免模糊
+    // 如果小于1（说明画布比容器大），则使用计算出的比例（缩小适配）
+    if (newZoom > 1) newZoom = 1
+
+    // 保留两位小数
+    newZoom = Math.floor(newZoom * 100) / 100
+
+    // 限制最小缩放
+    if (newZoom < 0.1) newZoom = 0.1
+
+    zoom.value = newZoom
+    canvasManager.value.setZoom(newZoom)
+  })
 }
 
 // 画布内容变化回调
 const handleCanvasChange = (objects) => {
+  // 过滤掉参考线
+  const layerObjects = objects.filter((obj) => !obj.isGuide)
+
   // 转换对象为简单数据结构存储在 Vuex
-  const layerData = objects.map((obj) => {
+  const layerData = layerObjects.map((obj) => {
     let name = obj.name
     if (!name) {
       if (obj.type === 'i-text' || obj.type === 'text') {
@@ -269,8 +324,14 @@ const redo = () => {
 const handleKeydown = (e) => {
   if (!canvasManager.value) return
 
+  // 如果正在输入缩放比例，不处理删除键
+  if (isZoomInputFocused.value) return
+
   if (e.key === 'Backspace' || e.key === 'Delete') {
-    canvasManager.value.deleteActiveObject()
+    // 只有当鼠标悬浮在画布区域时才允许删除（避免误删）
+    if (isMouseOverCanvas.value) {
+      canvasManager.value.deleteActiveObject()
+    }
   }
 
   // Undo: Ctrl+Z / Cmd+Z
@@ -283,6 +344,61 @@ const handleKeydown = (e) => {
   if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z') || ((e.ctrlKey || e.metaKey) && e.key === 'y')) {
     e.preventDefault()
     redo()
+  }
+}
+
+// 缩放控制
+const handleZoomIn = () => {
+  zoom.value = parseFloat(Math.min(zoom.value + 0.1, 5).toFixed(1))
+  if (canvasManager.value) {
+    canvasManager.value.setZoom(zoom.value)
+  }
+}
+
+const handleZoomOut = () => {
+  zoom.value = parseFloat(Math.max(zoom.value - 0.1, 0.1).toFixed(1))
+  if (canvasManager.value) {
+    canvasManager.value.setZoom(zoom.value)
+  }
+}
+
+// 参考线控制
+const handleGuideCommand = (command) => {
+  if (!canvasManager.value) return
+  if (command === 'h') {
+    canvasManager.value.addGuide('horizontal')
+  } else if (command === 'v') {
+    canvasManager.value.addGuide('vertical')
+  } else if (command === 'clear') {
+    canvasManager.value.clearGuides()
+  }
+}
+
+// 缩放输入处理
+const handleZoomInputChange = (val) => {
+  const numVal = parseInt(val)
+
+  // 如果是非法输入，重置为当前缩放比例
+  if (isNaN(numVal)) {
+    zoomInputVal.value = Math.round(zoom.value * 100)
+    return
+  }
+
+  let newZoom = numVal / 100
+
+  // 限制范围 10% - 500%
+  if (newZoom < 0.1) newZoom = 0.1
+  if (newZoom > 5) newZoom = 5
+
+  // 更新缩放比例
+  if (zoom.value !== newZoom) {
+    zoom.value = newZoom
+    if (canvasManager.value) {
+      canvasManager.value.setZoom(newZoom)
+    }
+  } else {
+    // 如果值没变（例如输入了相同的值，或者被限制了），手动重置输入框显示（去除前导零等）
+    zoomInputVal.value = Math.round(newZoom * 100)
   }
 }
 </script>
@@ -339,7 +455,7 @@ const handleKeydown = (e) => {
         </div>
       </el-aside>
 
-      <el-main class="canvas-area">
+      <el-main class="canvas-area" @mouseenter="isMouseOverCanvas = true" @mouseleave="isMouseOverCanvas = false">
         <div v-if="!isInitialized" class="start-screen">
           <div class="start-card">
             <el-button type="primary" size="large" class="start-btn primary" @click="handleOpenImage">
@@ -363,9 +479,44 @@ const handleKeydown = (e) => {
           <!-- 新建画布弹窗 -->
           <NewCanvasDialog v-model:visible="showNewCanvasDialog" @create="handleCreateCanvas" />
         </div>
-        <div v-else class="canvas-wrapper">
-          <canvas ref="canvasRef"></canvas>
-        </div>
+        <template v-else>
+          <div class="canvas-viewport">
+            <div class="canvas-wrapper">
+              <canvas ref="canvasRef"></canvas>
+            </div>
+          </div>
+
+          <!-- 画布控制栏 -->
+          <div class="canvas-controls">
+            <div class="zoom-controls">
+              <el-button circle size="small" :icon="ZoomOut" @click="handleZoomOut" />
+              <el-input
+                v-model="zoomInputVal"
+                size="small"
+                class="zoom-input"
+                @change="handleZoomInputChange"
+                @focus="isZoomInputFocused = true"
+                @blur="isZoomInputFocused = false"
+              >
+                <template #suffix>%</template>
+              </el-input>
+              <el-button circle size="small" :icon="ZoomIn" @click="handleZoomIn" />
+            </div>
+            <div class="divider"></div>
+            <div class="guide-controls">
+              <el-dropdown trigger="click" @command="handleGuideCommand">
+                <el-button circle size="small" :icon="Aim" title="参考线" />
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="h">添加横向参考线</el-dropdown-item>
+                    <el-dropdown-item command="v">添加纵向参考线</el-dropdown-item>
+                    <el-dropdown-item command="clear" divided>清除参考线</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
+          </div>
+        </template>
       </el-main>
 
       <el-aside width="300px" class="right-panel">
@@ -502,11 +653,21 @@ const handleKeydown = (e) => {
 .canvas-area {
   background-color: $bg-color;
   display: flex;
+  flex-direction: column;
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+}
+
+.canvas-viewport {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  display: flex;
   justify-content: center;
   align-items: center;
   padding: 40px;
-  overflow: auto;
-  position: relative;
 }
 
 .canvas-wrapper {
@@ -555,6 +716,61 @@ const handleKeydown = (e) => {
     font-size: 14px;
     font-weight: 600;
     color: $text-primary;
+  }
+}
+
+.canvas-controls {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  background: white;
+  padding: 8px 16px;
+  border-radius: 8px;
+  box-shadow: $shadow-md;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 100;
+
+  .zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    .zoom-input {
+      width: 64px;
+
+      :deep(.el-input__wrapper) {
+        padding: 0 4px;
+        box-shadow: none;
+        background: transparent;
+
+        &:hover {
+          box-shadow: none;
+          background: #f5f5f5;
+        }
+
+        &.is-focus {
+          box-shadow: 0 0 0 1px $primary-color;
+          background: white;
+        }
+      }
+
+      :deep(.el-input__inner) {
+        text-align: center;
+        padding-right: 0;
+      }
+
+      :deep(.el-input__suffix) {
+        margin-left: 2px;
+      }
+    }
+  }
+
+  .divider {
+    width: 1px;
+    height: 16px;
+    background-color: $border-color-light;
   }
 }
 </style>

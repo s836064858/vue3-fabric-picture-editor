@@ -35,6 +35,9 @@ export class CanvasManager {
    * @param {HTMLImageElement} [config.image] - 初始背景图片
    */
   init({ width = 800, height = 600, backgroundColor = '#ffffff', image = null }) {
+    this.originalWidth = width
+    this.originalHeight = height
+
     this.canvas = new fabric.Canvas(this.canvasElement, {
       width: width,
       height: height,
@@ -517,8 +520,118 @@ export class CanvasManager {
 
     // 取消选中状态，避免导出选中框
     this.canvas.discardActiveObject()
+
+    // 临时隐藏参考线
+    const objects = this.canvas.getObjects()
+    const guides = objects.filter((obj) => obj.isGuide)
+    const originalVisibilities = new Map()
+
+    guides.forEach((guide) => {
+      originalVisibilities.set(guide, guide.visible)
+      guide.visible = false
+    })
+
     this.canvas.requestRenderAll()
 
-    return this.canvas.toDataURL(options)
+    const dataUrl = this.canvas.toDataURL(options)
+
+    // 恢复参考线显示状态
+    guides.forEach((guide) => {
+      guide.visible = originalVisibilities.get(guide)
+    })
+    this.canvas.requestRenderAll()
+
+    return dataUrl
+  }
+
+  /**
+   * 设置画布缩放
+   * @param {number} zoom - 缩放比例 (0.1-5)
+   */
+  setZoom(zoom) {
+    if (!this.canvas) return
+
+    // 限制缩放范围
+    if (zoom < 0.1) zoom = 0.1
+    if (zoom > 5) zoom = 5
+
+    // 调整画布物理大小
+    this.canvas.setDimensions({
+      width: this.originalWidth * zoom,
+      height: this.originalHeight * zoom
+    })
+
+    // 设置缩放并重置平移
+    this.canvas.setViewportTransform([zoom, 0, 0, zoom, 0, 0])
+    this.canvas.requestRenderAll()
+  }
+
+  /**
+   * 添加参考线
+   * @param {string} orientation - 'horizontal' | 'vertical'
+   */
+  addGuide(orientation) {
+    if (!this.canvas) return
+
+    // 使用原始设计尺寸计算中心（逻辑坐标）
+    const centerX = this.originalWidth / 2
+    const centerY = this.originalHeight / 2
+
+    // 长度设置为足够大
+    const length = Math.max(this.originalWidth, this.originalHeight) * 5
+
+    let points = []
+    let options = {
+      stroke: '#00FFFF', // 青色
+      strokeWidth: 1,
+      strokeDashArray: [5, 5],
+      selectable: true,
+      evented: true,
+      lockRotation: true,
+      hasControls: false,
+      hasBorders: false,
+      id: Date.now().toString(),
+      isGuide: true,
+      excludeFromExport: true,
+      originX: 'center',
+      originY: 'center'
+    }
+
+    if (orientation === 'horizontal') {
+      points = [-length, 0, length, 0]
+      options.left = centerX
+      options.top = centerY
+      options.lockMovementX = true
+      options.hoverCursor = 'ns-resize'
+    } else {
+      points = [0, -length, 0, length]
+      options.left = centerX
+      options.top = centerY
+      options.lockMovementY = true
+      options.hoverCursor = 'ew-resize'
+    }
+
+    const line = new fabric.Line(points, options)
+
+    this.canvas.add(line)
+    this.canvas.setActiveObject(line)
+    this.canvas.requestRenderAll()
+
+    // 参考线不触发 onChange (不作为图层显示)，但保存历史记录
+    this.saveHistory()
+  }
+
+  /**
+   * 清除所有参考线
+   */
+  clearGuides() {
+    if (!this.canvas) return
+    const objects = this.canvas.getObjects()
+    const guides = objects.filter((obj) => obj.isGuide)
+    if (guides.length > 0) {
+      guides.forEach((guide) => this.canvas.remove(guide))
+      this.canvas.requestRenderAll()
+      this.saveHistory()
+    }
   }
 }
