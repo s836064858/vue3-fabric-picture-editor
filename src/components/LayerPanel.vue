@@ -130,6 +130,7 @@ const getPreviewContent = (layer) => {
 </template>
 
 <style scoped lang="scss">
+@use 'sass:color';
 @use '../styles/variables.scss' as *;
 
 .layer-panel {
@@ -166,7 +167,7 @@ const getPreviewContent = (layer) => {
 
   &.active {
     border-color: $primary-color;
-    background-color: lighten($primary-color, 45%);
+    background-color: color.adjust($primary-color, $lightness: 45%);
 
     .layer-name {
       color: $primary-color;

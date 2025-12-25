@@ -30,6 +30,7 @@ const handleToolClick = (toolId) => {
 </template>
 
 <style scoped lang="scss">
+@use 'sass:color';
 @use '../styles/variables.scss' as *;
 
 .toolbar {
@@ -70,7 +71,7 @@ const handleToolClick = (toolId) => {
   }
 
   &:active {
-    background-color: darken($bg-color, 5%);
+    background-color: color.adjust($bg-color, $lightness: -5%);
   }
 }
 

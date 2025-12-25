@@ -2,10 +2,11 @@
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
 import { useStore } from 'vuex'
 import * as fabric from 'fabric'
-import { Edit, RefreshLeft, RefreshRight, Download } from '@element-plus/icons-vue'
+import { Edit, RefreshLeft, RefreshRight, Download, Upload, Picture } from '@element-plus/icons-vue'
 import Toolbar from './Toolbar.vue'
 import PropertyPanel from './PropertyPanel.vue'
 import LayerPanel from './LayerPanel.vue'
+import NewCanvasDialog from './NewCanvasDialog.vue'
 
 const store = useStore()
 
@@ -13,6 +14,10 @@ const store = useStore()
 const canvasRef = ref(null)
 // Fabric.js 画布实例
 let canvas = null
+
+// 状态管理
+const isInitialized = ref(false)
+const showNewCanvasDialog = ref(false)
 
 // 历史记录相关
 const history = ref([])
@@ -25,9 +30,8 @@ const layers = computed(() => store.state.layers)
 const activeObjectId = computed(() => store.state.activeObjectId)
 const activeLayer = computed(() => store.getters.activeLayer)
 
-// 初始化画布
+// 初始化
 onMounted(() => {
-  initCanvas()
   window.addEventListener('keydown', handleKeydown)
 })
 
@@ -40,11 +44,14 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
 })
 
-const initCanvas = () => {
+// 初始化画布
+const initCanvas = (options = {}) => {
+  const { width = 800, height = 600, backgroundColor = '#ffffff', image = null } = options
+
   canvas = new fabric.Canvas(canvasRef.value, {
-    width: 600, // 初始宽度，后面可以自适应
-    height: 800, // 初始高度
-    backgroundColor: '#ffffff',
+    width: width,
+    height: height,
+    backgroundColor: backgroundColor === 'transparent' ? null : backgroundColor,
     preserveObjectStacking: true
   })
 
@@ -77,12 +84,67 @@ const initCanvas = () => {
   canvas.on('text:editing:exited', updateStoreLayers)
   canvas.on('text:changed', updateStoreLayers)
 
+  // 如果有初始图片
+  if (image) {
+    const imgInstance = new fabric.Image(image)
+    imgInstance.set({
+      id: Date.now().toString()
+    })
+    // 确保图片不被拉伸，保持原始大小
+    imgInstance.scaleX = 1
+    imgInstance.scaleY = 1
+
+    canvas.add(imgInstance)
+    canvas.setActiveObject(imgInstance)
+    canvas.centerObject(imgInstance)
+  }
+
   // 初始同步
   updateStoreLayers()
   // 保存初始状态
   saveHistory()
   // 初始化辅助对齐线
   initAligningGuidelines(canvas)
+}
+
+// 处理新建画布
+const handleCreateCanvas = ({ width, height, backgroundColor }) => {
+  isInitialized.value = true
+  nextTick(() => {
+    initCanvas({ width, height, backgroundColor })
+  })
+}
+
+// 打开图片（首页）
+const handleOpenImage = () => {
+  document.getElementById('start-file-input').click()
+}
+
+// 处理首页图片上传
+const handleStartScreenImageUpload = (e) => {
+  const file = e.target.files[0]
+  if (!file) return
+
+  const reader = new FileReader()
+  reader.onload = (f) => {
+    const imgObj = new Image()
+    imgObj.src = f.target.result
+    imgObj.onload = () => {
+      isInitialized.value = true
+      nextTick(() => {
+        // 需求：默认新建一个与图片大小保持一致的透明背景图层和图片图层
+        // 这里我们将画布设为图片大小，背景设为透明
+        initCanvas({
+          width: imgObj.width,
+          height: imgObj.height,
+          backgroundColor: 'transparent',
+          image: imgObj
+        })
+      })
+    }
+  }
+  reader.readAsDataURL(file)
+  e.target.value = ''
 }
 
 // 辅助对齐线功能
@@ -729,6 +791,9 @@ const handleKeydown = (e) => {
 
 <template>
   <div class="editor-layout">
+    <!-- 欢迎/开始页面 -->
+
+    <!-- 编辑器界面 -->
     <el-header class="app-header">
       <div class="logo">
         <img src="/icon.png" alt="logo" width="32" height="32" />
@@ -745,13 +810,13 @@ const handleKeydown = (e) => {
       </div>
 
       <div class="actions">
-        <el-button type="primary" size="small" :icon="Download" @click="handleExport">导出图片</el-button>
+        <el-button type="primary" v-if="isInitialized" size="small" :icon="Download" @click="handleExport">导出图片</el-button>
       </div>
     </el-header>
 
     <el-container class="main-container">
       <el-aside width="200px" class="left-panel">
-        <div class="left-panel-content">
+        <div class="left-panel-content" v-if="isInitialized">
           <div class="toolbar-container">
             <Toolbar @tool-selected="handleToolSelected" />
             <input type="file" id="file-input" accept="image/*" style="display: none" @change="handleImageUpload" />
@@ -770,10 +835,37 @@ const handleKeydown = (e) => {
             />
           </div>
         </div>
+        <div v-else class="empty-content">
+          <el-icon :size="64" color="#E5E6EB"><Pointer /></el-icon>
+          <p>先创建画布</p>
+        </div>
       </el-aside>
 
       <el-main class="canvas-area">
-        <div class="canvas-wrapper">
+        <div v-if="!isInitialized" class="start-screen">
+          <div class="start-card">
+            <el-button type="primary" size="large" class="start-btn primary" @click="handleOpenImage">
+              <el-icon class="icon"><Upload /></el-icon>
+              打开图片
+            </el-button>
+
+            <el-button size="large" class="start-btn" style="margin-left: 0" @click="showNewCanvasDialog = true">
+              <el-icon class="icon"><Picture /></el-icon>
+              新建画布
+            </el-button>
+
+            <div class="start-footer">
+              您也可以粘贴与拖拽图片至此页面打开或
+              <el-link type="primary" @click="showNewCanvasDialog = true">新建画布</el-link>
+            </div>
+
+            <input type="file" id="start-file-input" accept="image/*" style="display: none" @change="handleStartScreenImageUpload" />
+          </div>
+
+          <!-- 新建画布弹窗 -->
+          <NewCanvasDialog v-model:visible="showNewCanvasDialog" @create="handleCreateCanvas" />
+        </div>
+        <div v-else class="canvas-wrapper">
           <canvas ref="canvasRef"></canvas>
         </div>
       </el-main>
@@ -796,6 +888,57 @@ const handleKeydown = (e) => {
   display: flex;
   flex-direction: column;
   background-color: $bg-color;
+}
+
+// 开始页面样式
+.start-screen {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #f0f2f5;
+
+  .start-card {
+    background: #fff;
+    padding: 60px 80px;
+    border-radius: 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+
+    .start-btn {
+      width: 280px;
+      height: 48px;
+      font-size: 16px;
+      border-radius: 8px;
+
+      .icon {
+        margin-right: 8px;
+        font-size: 18px;
+      }
+
+      &.primary {
+        background-color: #1890ff;
+        border-color: #1890ff;
+
+        &:hover {
+          background-color: #40a9ff;
+          border-color: #40a9ff;
+        }
+      }
+    }
+
+    .start-footer {
+      margin-top: 16px;
+      color: #8c8c8c;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+  }
 }
 
 .app-header {
@@ -842,6 +985,16 @@ const handleKeydown = (e) => {
   flex-direction: column;
 }
 
+.empty-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  color: #86909c;
+}
+
 .toolbar-container {
   padding: 16px 0;
   display: flex;
@@ -856,18 +1009,18 @@ const handleKeydown = (e) => {
   padding: 40px;
   overflow: auto;
   position: relative;
-
-  // 画布背景网格
-  background-image: linear-gradient(45deg, #e6e6e6 25%, transparent 25%), linear-gradient(-45deg, #e6e6e6 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #e6e6e6 75%), linear-gradient(-45deg, transparent 75%, #e6e6e6 75%);
-  background-size: 20px 20px;
-  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
 }
 
 .canvas-wrapper {
   box-shadow: $shadow-lg;
   background-color: white;
   transition: transform 0.2s ease-out;
+
+  // 画布背景网格
+  background-image: linear-gradient(45deg, #e6e6e6 25%, transparent 25%), linear-gradient(-45deg, #e6e6e6 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #e6e6e6 75%), linear-gradient(-45deg, transparent 75%, #e6e6e6 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
 }
 
 .right-panel {
