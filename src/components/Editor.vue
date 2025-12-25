@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch, nextTick, shallowRef, markRaw } from 'vue'
 import { useStore } from 'vuex'
 import { Edit, RefreshLeft, RefreshRight, Download, Upload, Picture, ZoomIn, ZoomOut, Aim } from '@element-plus/icons-vue'
 import Toolbar from './Toolbar.vue'
@@ -13,7 +13,7 @@ const store = useStore()
 // 画布引用
 const canvasRef = ref(null)
 // CanvasManager 实例
-const canvasManager = ref(null)
+const canvasManager = shallowRef(null)
 
 // 状态管理
 const isInitialized = ref(false)
@@ -52,11 +52,13 @@ onUnmounted(() => {
 
 // 初始化画布
 const initCanvas = (options = {}) => {
-  canvasManager.value = new CanvasManager(canvasRef.value, {
-    onChange: handleCanvasChange,
-    onSelection: handleSelectionChange,
-    onHistoryChange: handleHistoryChange
-  })
+  canvasManager.value = markRaw(
+    new CanvasManager(canvasRef.value, {
+      onChange: handleCanvasChange,
+      onSelection: handleSelectionChange,
+      onHistoryChange: handleHistoryChange
+    })
+  )
 
   canvasManager.value.init(options)
   isInitialized.value = true
@@ -225,6 +227,9 @@ const handleToolSelected = (tool) => {
   } else if (tool === 'image') {
     // 触发文件选择
     document.getElementById('file-input').click()
+  } else if (tool.startsWith('shape-')) {
+    const type = tool.split('-')[1]
+    canvasManager.value.addShape(type)
   }
 }
 

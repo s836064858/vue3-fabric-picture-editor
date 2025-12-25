@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue'
-import { Picture, Edit, Monitor, Upload } from '@element-plus/icons-vue'
+import { Picture, Edit, Monitor, Upload, CaretBottom } from '@element-plus/icons-vue'
 
 const emit = defineEmits(['tool-selected'])
 
@@ -11,6 +11,10 @@ const tools = [
 
 const handleToolClick = (toolId) => {
   emit('tool-selected', toolId)
+}
+
+const handleShapeClick = (shapeType) => {
+  emit('tool-selected', `shape-${shapeType}`)
 }
 </script>
 
@@ -25,6 +29,32 @@ const handleToolClick = (toolId) => {
           <span class="tool-name">{{ tool.name }}</span>
         </div>
       </el-tooltip>
+
+      <!-- 形状工具 -->
+      <el-popover placement="right" trigger="hover" :width="120" popper-class="shape-popover">
+        <template #reference>
+          <div class="tool-item">
+            <div class="icon-wrapper">
+              <el-icon :size="20"><Monitor /></el-icon>
+            </div>
+            <span class="tool-name">添加形状</span>
+          </div>
+        </template>
+        <div class="shape-list">
+          <div class="shape-item" @click="handleShapeClick('rect')">
+            <div class="shape-icon rect"></div>
+            <span>矩形</span>
+          </div>
+          <div class="shape-item" @click="handleShapeClick('circle')">
+            <div class="shape-icon circle"></div>
+            <span>圆形</span>
+          </div>
+          <div class="shape-item" @click="handleShapeClick('triangle')">
+            <div class="shape-icon triangle"></div>
+            <span>三角形</span>
+          </div>
+        </div>
+      </el-popover>
     </div>
   </div>
 </template>
@@ -86,5 +116,51 @@ const handleToolClick = (toolId) => {
 .tool-name {
   font-size: 12px;
   transform: scale(0.9);
+}
+
+// 形状列表样式
+.shape-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shape-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  color: #333;
+
+  &:hover {
+    background-color: #f5f7fa;
+    color: $primary-color;
+  }
+
+  .shape-icon {
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid currentColor;
+
+    &.rect {
+      border-radius: 2px;
+    }
+
+    &.circle {
+      border-radius: 50%;
+    }
+
+    &.triangle {
+      width: 0;
+      height: 0;
+      border: none;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-bottom: 14px solid currentColor;
+    }
+  }
 }
 </style>

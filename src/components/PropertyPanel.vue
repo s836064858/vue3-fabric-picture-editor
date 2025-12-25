@@ -14,6 +14,27 @@ const emit = defineEmits(['property-change', 'image-replace'])
 // 是否有选中的对象
 const hasActiveObject = computed(() => !!props.activeObject)
 
+// 是否为形状
+const isShape = computed(() => {
+  return props.activeObject && ['rect', 'circle', 'triangle'].includes(props.activeObject.type)
+})
+
+// 类型名称映射
+const TYPE_NAME_MAP = {
+  image: '图片',
+  'i-text': '文字',
+  text: '文字',
+  rect: '形状',
+  circle: '形状',
+  triangle: '形状'
+}
+
+// 获取类型名称
+const typeName = computed(() => {
+  if (!props.activeObject) return ''
+  return TYPE_NAME_MAP[props.activeObject.type] || '图层'
+})
+
 // 通用处理函数
 const handleChange = (property, value) => {
   emit('property-change', { property, value })
@@ -47,11 +68,12 @@ const formatTooltip = (val) => {
         <div class="type-icon">
           <el-icon v-if="activeObject.type === 'image'" :size="24"><Picture /></el-icon>
           <el-icon v-else-if="activeObject.type === 'i-text' || activeObject.type === 'text'" :size="24"><Edit /></el-icon>
+          <el-icon v-else-if="isShape" :size="24"><Monitor /></el-icon>
           <el-icon v-else :size="24"><Menu /></el-icon>
         </div>
         <div class="type-info">
           <div class="type-name">
-            {{ activeObject.type === 'image' ? '图片' : activeObject.type === 'i-text' || activeObject.type === 'text' ? '文字' : '图层' }}
+            {{ typeName }}
           </div>
           <div class="type-actions">
             <el-icon
@@ -164,6 +186,17 @@ const formatTooltip = (val) => {
           <div class="divider"></div>
         </div>
 
+        <!-- 形状属性 (仅形状显示) -->
+        <div v-if="isShape" class="section-group">
+          <div class="prop-row">
+            <div class="prop-label">填充</div>
+            <div class="prop-content align-center">
+              <el-color-picker :model-value="activeObject.fill" show-alpha @change="(val) => handleChange('fill', val)" />
+            </div>
+          </div>
+          <div class="divider"></div>
+        </div>
+
         <!-- 图片属性 (仅图片显示) -->
         <div v-if="activeObject.type === 'image'" class="section-group">
           <div class="prop-row">
@@ -216,7 +249,7 @@ const formatTooltip = (val) => {
                   @change="(val) => handleChange('width', val)"
                   class="gray-input"
                   :controls="false"
-                  :disabled="activeObject.type !== 'image'"
+                  :disabled="activeObject.type !== 'image' && !isShape"
                 />
                 <span class="inner-label">宽</span>
               </div>
@@ -227,7 +260,7 @@ const formatTooltip = (val) => {
                   @change="(val) => handleChange('height', val)"
                   class="gray-input"
                   :controls="false"
-                  :disabled="activeObject.type !== 'image'"
+                  :disabled="activeObject.type !== 'image' && !isShape"
                 />
                 <span class="inner-label">高</span>
               </div>

@@ -279,6 +279,47 @@ export class CanvasManager {
   }
 
   /**
+   * 添加形状
+   * @param {string} type - 形状类型 'rect' | 'circle' | 'triangle'
+   */
+  addShape(type) {
+    let shape
+    const id = Date.now().toString()
+    const options = {
+      id,
+      fill: '#1890ff',
+      width: 100,
+      height: 100,
+      left: this.canvas.width / 2,
+      top: this.canvas.height / 2,
+      originX: 'center',
+      originY: 'center',
+      hasControls: true
+    }
+
+    if (type === 'rect') {
+      shape = new fabric.Rect(options)
+    } else if (type === 'circle') {
+      // Circle uses radius instead of width/height
+      shape = new fabric.Circle({
+        ...options,
+        radius: 50,
+        width: 100, // Fabric calculates width as radius * 2
+        height: 100
+      })
+    } else if (type === 'triangle') {
+      shape = new fabric.Triangle(options)
+    }
+
+    if (shape) {
+      this.canvas.add(shape)
+      this.canvas.setActiveObject(shape)
+      this._triggerChange()
+      this.saveHistory()
+    }
+  }
+
+  /**
    * 添加图片对象
    * @param {string} dataUrl - 图片 DataURL
    */
@@ -347,9 +388,9 @@ export class CanvasManager {
         lockScalingY: isLocked,
         selectable: !isLocked
       })
-    } else if (property === 'width' && activeObject.type === 'image') {
+    } else if (property === 'width' && (activeObject.type === 'image' || ['rect', 'circle', 'triangle'].includes(activeObject.type))) {
       activeObject.scaleToWidth(value)
-    } else if (property === 'height' && activeObject.type === 'image') {
+    } else if (property === 'height' && (activeObject.type === 'image' || ['rect', 'circle', 'triangle'].includes(activeObject.type))) {
       activeObject.scaleToHeight(value)
     } else {
       activeObject.set(property, value)
