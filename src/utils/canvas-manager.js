@@ -265,10 +265,13 @@ export class CanvasManager {
    * 添加文本对象
    */
   addText() {
+    const zoom = this.canvas.getZoom()
+    const fontSize = Math.round(24 / zoom)
+
     const text = new fabric.IText('双击编辑文本', {
       fontFamily: 'PingFang SC',
       fill: '#333333',
-      fontSize: 24,
+      fontSize: fontSize,
       id: Date.now().toString()
     })
     this.canvas.add(text)
