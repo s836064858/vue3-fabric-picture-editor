@@ -455,8 +455,8 @@ const handleZoomInputChange = (val) => {
           </div>
         </div>
         <div v-else class="empty-content">
-          <el-icon :size="64" color="#E5E6EB"><Pointer /></el-icon>
-          <p>先创建画布</p>
+          <el-icon :size="64" color="#E5E6EB"><Picture /></el-icon>
+          <p>请先【创建画布】</p>
         </div>
       </el-aside>
 
@@ -525,8 +525,12 @@ const handleZoomInputChange = (val) => {
       </el-main>
 
       <el-aside width="300px" class="right-panel">
-        <div class="right-panel-content">
+        <div class="right-panel-content" v-if="isInitialized">
           <PropertyPanel :active-object="activeLayer" @property-change="handlePropertyChange" @image-replace="handleImageReplace" />
+        </div>
+        <div v-else class="empty-content">
+          <el-icon :size="64" color="#E5E6EB"><Picture /></el-icon>
+          <p>请先【创建画布】</p>
         </div>
       </el-aside>
     </el-container>
