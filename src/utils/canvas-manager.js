@@ -111,10 +111,19 @@ export class CanvasManager {
       }
     })
 
-    // 实时同步事件
-    this.canvas.on('object:moving', () => this._triggerChange())
-    this.canvas.on('object:scaling', () => this._triggerChange())
-    this.canvas.on('object:rotating', () => this._triggerChange())
+    // 实时同步事件（使用 requestAnimationFrame 节流）
+    let rafId = null
+    const throttleTriggerChange = () => {
+      if (rafId) return
+      rafId = requestAnimationFrame(() => {
+        this._triggerChange()
+        rafId = null
+      })
+    }
+
+    this.canvas.on('object:moving', throttleTriggerChange)
+    this.canvas.on('object:scaling', throttleTriggerChange)
+    this.canvas.on('object:rotating', throttleTriggerChange)
 
     // 文本编辑事件
     this.canvas.on('text:editing:exited', () => this._triggerChange())

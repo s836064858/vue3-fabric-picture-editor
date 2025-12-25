@@ -1,4 +1,5 @@
 import * as fabric from 'fabric'
+
 /**
  * 初始化辅助对齐线功能
  * @param {fabric.Canvas} canvas - Fabric Canvas 实例
@@ -10,6 +11,9 @@ export const initAligningGuidelines = (canvas) => {
   const aligningLineColor = '#1890FF'
   let viewportTransform
   let zoom = 1
+
+  // 缓存对齐候选对象
+  let alignmentCandidates = []
 
   /**
    * 绘制垂直线
@@ -65,16 +69,47 @@ export const initAligningGuidelines = (canvas) => {
   const verticalLines = []
   const horizontalLines = []
 
-  // 监听鼠标按下事件，更新视图变换和缩放
-  canvas.on('mouse:down', () => {
+  // 监听鼠标按下事件，更新视图变换和缩放，并缓存候选对象
+  canvas.on('mouse:down', (e) => {
     viewportTransform = canvas.viewportTransform
     zoom = canvas.getZoom()
+    const activeObject = e.target
+
+    // 只有选中对象且可移动时才进行计算
+    if (activeObject && activeObject.selectable) {
+      alignmentCandidates = canvas
+        .getObjects()
+        .filter((obj) => {
+          // 排除自身
+          if (obj === activeObject) return false
+          // 排除不可见对象
+          if (!obj.visible) return false
+          // 排除辅助线 (根据 CanvasManager 中的定义，辅助线有 isGuide: true)
+          if (obj.isGuide || (obj.type === 'line' && obj.excludeFromAlignment)) return false
+          // 排除被选中的组内的对象
+          if (activeObject.type === 'activeSelection' && activeObject.contains(obj)) return false
+          return true
+        })
+        .map((obj) => {
+          const center = obj.getCenterPoint()
+          const rect = obj.getBoundingRect()
+          return {
+            x: center.x,
+            y: center.y,
+            width: rect.width / zoom,
+            height: rect.height / zoom
+          }
+        })
+    } else {
+      alignmentCandidates = []
+    }
   })
 
   // 监听对象移动事件
   canvas.on('object:moving', (e) => {
     const activeObject = e.target
-    const canvasObjects = canvas.getObjects()
+    if (!activeObject) return
+
     const activeObjectCenter = activeObject.getCenterPoint()
     const activeObjectLeft = activeObjectCenter.x
     const activeObjectTop = activeObjectCenter.y
@@ -83,8 +118,6 @@ export const initAligningGuidelines = (canvas) => {
     const activeObjectWidth = activeObjectBoundingRect.width / zoom
     let horizontalInTheRange = false
     let verticalInTheRange = false
-
-    if (!activeObject) return
 
     // 每次移动前清空
     verticalLines.length = 0
@@ -116,18 +149,13 @@ export const initAligningGuidelines = (canvas) => {
       activeObject.setPositionByOrigin(new fabric.Point(activeObjectLeft, canvasHeight / 2), 'center', 'center')
     }
 
-    // 对象间对齐检测
-    for (let i = canvasObjects.length; i--; ) {
-      if (canvasObjects[i] === activeObject) continue
-      if (!canvasObjects[i].visible) continue // 忽略不可见对象
-      if (canvasObjects[i].type === 'line' && canvasObjects[i].excludeFromAlignment) continue
-
-      const objectCenter = canvasObjects[i].getCenterPoint()
-      const objectLeft = objectCenter.x
-      const objectTop = objectCenter.y
-      const objectBoundingRect = canvasObjects[i].getBoundingRect()
-      const objectHeight = objectBoundingRect.height / zoom
-      const objectWidth = objectBoundingRect.width / zoom
+    // 对象间对齐检测 - 使用缓存的 alignmentCandidates
+    for (let i = alignmentCandidates.length; i--; ) {
+      const objectProps = alignmentCandidates[i]
+      const objectLeft = objectProps.x
+      const objectTop = objectProps.y
+      const objectHeight = objectProps.height
+      const objectWidth = objectProps.width
 
       // 水平中心线对齐
       if (isInRange(objectLeft, activeObjectLeft)) {
@@ -228,6 +256,7 @@ export const initAligningGuidelines = (canvas) => {
   canvas.on('mouse:up', () => {
     verticalLines.length = 0
     horizontalLines.length = 0
+    alignmentCandidates = [] // 清空缓存
     canvas.requestRenderAll()
   })
 }
