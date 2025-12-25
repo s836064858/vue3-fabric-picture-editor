@@ -22,6 +22,8 @@ const zoom = ref(1)
 const isZoomInputFocused = ref(false)
 const zoomInputVal = ref(100)
 const isMouseOverCanvas = ref(false)
+const isDragging = ref(false)
+let dragCounter = 0
 
 watch(zoom, (newVal) => {
   zoomInputVal.value = Math.round(newVal * 100)
@@ -39,6 +41,7 @@ const activeLayer = computed(() => store.getters.activeLayer)
 // 初始化
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
+  window.addEventListener('paste', handlePaste)
 })
 
 // 清理资源
@@ -48,6 +51,7 @@ onUnmounted(() => {
     canvasManager.value = null
   }
   window.removeEventListener('keydown', handleKeydown)
+  window.removeEventListener('paste', handlePaste)
 })
 
 // 初始化画布
@@ -185,10 +189,9 @@ const handleOpenImage = () => {
   document.getElementById('start-file-input').click()
 }
 
-// 处理首页图片上传
-const handleStartScreenImageUpload = (e) => {
-  const file = e.target.files[0]
-  if (!file) return
+// 处理图片文件加载
+const processImageFile = (file) => {
+  if (!file || !file.type.startsWith('image/')) return
 
   const reader = new FileReader()
   reader.onload = (f) => {
@@ -209,7 +212,56 @@ const handleStartScreenImageUpload = (e) => {
     }
   }
   reader.readAsDataURL(file)
+}
+
+// 处理首页图片上传
+const handleStartScreenImageUpload = (e) => {
+  const file = e.target.files[0]
+  processImageFile(file)
   e.target.value = ''
+}
+
+// 处理粘贴事件
+const handlePaste = (e) => {
+  // 仅在未初始化（首页）时处理粘贴
+  if (isInitialized.value) return
+
+  const items = e.clipboardData?.items
+  if (!items) return
+
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].type.indexOf('image') !== -1) {
+      const file = items[i].getAsFile()
+      processImageFile(file)
+      break
+    }
+  }
+}
+
+// 处理拖拽事件
+const handleDragEnter = (e) => {
+  if (isInitialized.value) return
+  dragCounter++
+  if (dragCounter === 1) {
+    isDragging.value = true
+  }
+}
+
+const handleDragLeave = (e) => {
+  if (isInitialized.value) return
+  dragCounter--
+  if (dragCounter === 0) {
+    isDragging.value = false
+  }
+}
+
+const handleDrop = (e) => {
+  if (isInitialized.value) return
+  isDragging.value = false
+  dragCounter = 0
+
+  const file = e.dataTransfer?.files[0]
+  processImageFile(file)
 }
 
 // 监听 Vuex activeObjectId 变化，同步选中状态到 Canvas
@@ -425,7 +477,15 @@ const handleZoomInputChange = (val) => {
 </script>
 
 <template>
-  <div class="editor-layout">
+  <div class="editor-layout" @dragenter.prevent="handleDragEnter" @dragleave.prevent="handleDragLeave" @dragover.prevent @drop.prevent="handleDrop">
+    <!-- 拖拽覆盖层 -->
+    <div v-if="isDragging && !isInitialized" class="drag-overlay">
+      <div class="drag-content">
+        <el-icon :size="64" color="#fff"><Upload /></el-icon>
+        <p>释放鼠标打开图片</p>
+      </div>
+    </div>
+
     <!-- 欢迎/开始页面 -->
 
     <!-- 编辑器界面 -->
@@ -477,7 +537,7 @@ const handleZoomInputChange = (val) => {
       </el-aside>
 
       <el-main class="canvas-area" @mouseenter="isMouseOverCanvas = true" @mouseleave="isMouseOverCanvas = false">
-        <div v-if="!isInitialized" class="start-screen">
+        <div v-if="!isInitialized" class="start-screen" @dragover.prevent @drop.prevent="handleDrop">
           <div class="start-card">
             <div class="brand-info">
               <img src="/icon.png" alt="logo" width="64" height="64" class="brand-logo" />
@@ -571,6 +631,41 @@ const handleZoomInputChange = (val) => {
   display: flex;
   flex-direction: column;
   background-color: $bg-color;
+}
+
+.drag-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.6);
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(4px);
+
+  .drag-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 40px;
+    border: 3px dashed #fff;
+    border-radius: 16px;
+    background-color: rgba(255, 255, 255, 0.1);
+
+    p {
+      font-size: 24px;
+      color: #fff;
+      font-weight: 500;
+      margin: 0;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+  }
 }
 
 // 开始页面样式
@@ -846,6 +941,41 @@ const handleZoomInputChange = (val) => {
     width: 1px;
     height: 16px;
     background-color: $border-color-light;
+  }
+}
+
+.drag-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.6); // 改为深色遮罩
+  z-index: 9999; // 提高层级
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(4px); // 添加模糊效果
+
+  .drag-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 40px;
+    border: 3px dashed #fff; // 改为白色虚线
+    border-radius: 16px;
+    background-color: rgba(255, 255, 255, 0.1); // 轻微背景
+
+    p {
+      font-size: 24px;
+      color: #fff; // 改为白色文字
+      font-weight: 500;
+      margin: 0;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
   }
 }
 </style>

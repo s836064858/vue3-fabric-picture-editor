@@ -27,6 +27,7 @@ export class CanvasManager {
 
     // 剪贴板
     this._clipboard = null
+    this._pasteCount = 0
   }
 
   /**
