@@ -24,6 +24,9 @@ export class CanvasManager {
     this.historyStep = -1
     this.isHistoryProcessing = false
     this.MAX_HISTORY = 50
+
+    // 剪贴板
+    this._clipboard = null
   }
 
   /**
@@ -233,6 +236,57 @@ export class CanvasManager {
     this.isHistoryProcessing = false
     this._triggerChange()
     this._triggerHistoryChange()
+  }
+
+  /**
+   * 复制当前选中对象
+   */
+  async copy() {
+    if (!this.canvas) return
+    const activeObject = this.canvas.getActiveObject()
+    if (activeObject) {
+      const cloned = await activeObject.clone()
+      this._clipboard = cloned
+      this._pasteCount = 0
+    }
+  }
+
+  /**
+   * 粘贴对象
+   */
+  async paste() {
+    if (!this.canvas || !this._clipboard) return
+
+    const clonedObj = await this._clipboard.clone()
+    this.canvas.discardActiveObject()
+
+    this._pasteCount++
+    const offset = this._pasteCount * 20
+
+    clonedObj.set({
+      left: clonedObj.left + offset,
+      top: clonedObj.top + offset,
+      evented: true
+    })
+
+    if (clonedObj.type === 'activeSelection') {
+      // 活跃选区需要特殊处理：将内部对象分别添加到画布
+      clonedObj.canvas = this.canvas
+      clonedObj.forEachObject((obj) => {
+        obj.id = Date.now().toString() + Math.random().toString(36).substr(2, 5)
+        this.canvas.add(obj)
+      })
+      // 需要重新设置坐标
+      clonedObj.setCoords()
+    } else {
+      clonedObj.id = Date.now().toString()
+      this.canvas.add(clonedObj)
+    }
+
+    this.canvas.setActiveObject(clonedObj)
+    this.canvas.requestRenderAll()
+    this._triggerChange()
+    this.saveHistory()
   }
 
   /**

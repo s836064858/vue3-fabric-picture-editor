@@ -350,6 +350,22 @@ const handleKeydown = (e) => {
     e.preventDefault()
     redo()
   }
+
+  // Copy: Ctrl+C / Cmd+C
+  if ((e.ctrlKey || e.metaKey) && e.key === 'c' && !e.shiftKey) {
+    e.preventDefault()
+    if (canvasManager.value) {
+      canvasManager.value.copy()
+    }
+  }
+
+  // Paste: Ctrl+V / Cmd+V
+  if ((e.ctrlKey || e.metaKey) && e.key === 'v' && !e.shiftKey) {
+    e.preventDefault()
+    if (canvasManager.value) {
+      canvasManager.value.paste()
+    }
+  }
 }
 
 // 缩放控制
