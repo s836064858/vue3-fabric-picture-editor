@@ -416,7 +416,7 @@ const handleZoomInputChange = (val) => {
     <el-header class="app-header">
       <div class="logo">
         <img src="/icon.png" alt="logo" width="32" height="32" />
-        <span class="title">Vue3 图片编辑器</span>
+        <span class="title">Fabix 绘坊</span>
       </div>
 
       <div class="history-actions">
@@ -463,6 +463,12 @@ const handleZoomInputChange = (val) => {
       <el-main class="canvas-area" @mouseenter="isMouseOverCanvas = true" @mouseleave="isMouseOverCanvas = false">
         <div v-if="!isInitialized" class="start-screen">
           <div class="start-card">
+            <div class="brand-info">
+              <img src="/icon.png" alt="logo" width="64" height="64" class="brand-logo" />
+              <h1 class="brand-title">Fabix 绘坊</h1>
+              <p class="brand-slogan">Vue 画布，随心绘编</p>
+            </div>
+
             <el-button type="primary" size="large" class="start-btn primary" @click="handleOpenImage">
               <el-icon class="icon"><Upload /></el-icon>
               打开图片
@@ -534,6 +540,9 @@ const handleZoomInputChange = (val) => {
         </div>
       </el-aside>
     </el-container>
+
+    <!-- 底部版权信息 -->
+    <div class="app-footer">© 2025 Fabix 绘坊. All Rights Reserved.</div>
   </div>
 </template>
 
@@ -565,6 +574,34 @@ const handleZoomInputChange = (val) => {
     flex-direction: column;
     align-items: center;
     gap: 24px;
+    /* 避免被底部遮挡 */
+    margin-bottom: 40px;
+
+    .brand-info {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 24px;
+
+      .brand-logo {
+        margin-bottom: 16px;
+      }
+
+      .brand-title {
+        font-size: 32px;
+        font-weight: 600;
+        color: #1d2129;
+        margin: 0 0 8px;
+        letter-spacing: 1px;
+      }
+
+      .brand-slogan {
+        font-size: 16px;
+        color: #86909c;
+        margin: 0;
+        letter-spacing: 2px;
+      }
+    }
 
     .start-btn {
       width: 280px;
@@ -621,6 +658,19 @@ const handleZoomInputChange = (val) => {
       color: $text-primary;
     }
   }
+}
+
+.app-footer {
+  height: 32px;
+  background-color: #fff;
+  border-top: 1px solid #f2f3f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #86909c;
+  flex-shrink: 0;
+  z-index: 20;
 }
 
 .main-container {
