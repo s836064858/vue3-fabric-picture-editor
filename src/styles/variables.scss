@@ -1,0 +1,30 @@
+// 颜色规范
+$primary-color: #1890FF;
+$success-color: #52C41A;
+$warning-color: #FAAD14;
+$error-color: #F5222D;
+
+$text-primary: #262626;
+$text-regular: #595959;
+$text-secondary: #8C8C8C;
+$text-disabled: #BFBFBF;
+
+$border-color: #D9D9D9;
+$border-color-light: #EBEEF5;
+$bg-color: #F0F2F5;
+$bg-color-white: #FFFFFF;
+
+// 布局规范
+$header-height: 56px;
+$sidebar-width-left: 80px;
+$sidebar-width-right: 320px;
+
+// 阴影
+$shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+$shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+$shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+
+// 圆角
+$radius-sm: 4px;
+$radius-md: 8px;
+$radius-lg: 12px;

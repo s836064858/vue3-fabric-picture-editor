@@ -1,0 +1,39 @@
+@use './variables.scss' as *;
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'PingFang SC', 'Helvetica Neue', Helvetica, 'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: $bg-color;
+  color: $text-primary;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(144, 147, 153, 0.3);
+  border-radius: 3px;
+  
+  &:hover {
+    background: rgba(144, 147, 153, 0.5);
+  }
+}
+
+// 覆盖 Element Plus 的一些默认样式以符合设计规范
+:root {
+  --el-color-primary: #{$primary-color};
+  --el-text-color-primary: #{$text-primary};
+  --el-text-color-regular: #{$text-regular};
+  --el-text-color-secondary: #{$text-secondary};
+  --el-border-color: #{$border-color};
+  --el-bg-color-page: #{$bg-color};
+}

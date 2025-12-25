@@ -1,0 +1,20 @@
+@font-face {
+  font-family: 'AlimamaDaoLiTi';
+  src: url('../assets/font/AlimamaDaoLiTi.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'AlimamaDongFangDaKai';
+  src: url('../assets/font/AlimamaDongFangDaKai-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'AlimamaShuHeiTi';
+  src: url('../assets/font/AlimamaShuHeiTi-Bold.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
