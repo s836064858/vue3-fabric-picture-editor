@@ -35,6 +35,16 @@ export class CanvasManager {
     this.currentLineType = null
     this.drawingLineObject = null
     this.drawingStartPoint = null
+
+    // 涂鸦组
+    this.doodleGroup = null
+    this.isEraserMode = false
+    this.isErasing = false
+    this.eraserPoints = []
+    this.currentEraserPath = null
+
+    // 自定义光标元素
+    this.cursorEl = null
   }
 
   /**
@@ -61,6 +71,9 @@ export class CanvasManager {
     // 初始化辅助对齐线
     initAligningGuidelines(this.canvas)
 
+    // 初始化自定义光标
+    this._initCursor()
+
     // 如果有初始图片
     if (image) {
       const imgInstance = new fabric.FabricImage(image)
@@ -86,6 +99,10 @@ export class CanvasManager {
    * 销毁画布实例
    */
   dispose() {
+    if (this.cursorEl && this.cursorEl.parentNode) {
+      this.cursorEl.parentNode.removeChild(this.cursorEl)
+      this.cursorEl = null
+    }
     if (this.canvas) {
       this.canvas.dispose()
       this.canvas = null
@@ -109,9 +126,21 @@ export class CanvasManager {
       const path = opt.path
       path.set({
         id: Date.now().toString(),
-        name: '涂鸦',
-        selectable: true
+        name: this.isEraserMode ? '橡皮擦' : '涂鸦',
+        selectable: false,
+        evented: false
       })
+
+      if (this.isEraserMode) {
+        // 关键：设置混合模式为 destination-out，实现擦除效果
+        path.globalCompositeOperation = 'destination-out'
+        // 橡皮擦路径稍微粗一点，体验更好
+        path.strokeWidth = this.canvas.freeDrawingBrush.width
+      }
+
+      // 将路径添加到涂鸦组中
+      this._addToDoodleGroup(path)
+
       this._triggerChange()
       this.saveHistory()
     })
@@ -131,7 +160,11 @@ export class CanvasManager {
     })
 
     // 对象移除事件
-    this.canvas.on('object:removed', () => {
+    this.canvas.on('object:removed', (e) => {
+      if (e.target && e.target.id === 'doodle-group') {
+        this.doodleGroup = null
+      }
+
       if (!this.isHistoryProcessing) {
         this.saveHistory()
         this._triggerChange()
@@ -160,6 +193,98 @@ export class CanvasManager {
     this.canvas.on('mouse:down', this._handleMouseDown.bind(this))
     this.canvas.on('mouse:move', this._handleMouseMove.bind(this))
     this.canvas.on('mouse:up', this._handleMouseUp.bind(this))
+
+    // 监听鼠标移出/移入画布，控制光标显示
+    this.canvas.on('mouse:out', () => {
+      if (this.cursorEl) this.cursorEl.style.display = 'none'
+    })
+    this.canvas.on('mouse:over', () => {
+      if (this._shouldShowCursor()) {
+        this.cursorEl.style.display = 'block'
+      }
+    })
+
+    // 监听缩放，更新光标大小
+    this.canvas.on('mouse:wheel', () => {
+      this._updateCursorSize()
+    })
+  }
+
+  /**
+   * 初始化自定义光标 DOM
+   * @private
+   */
+  _initCursor() {
+    if (this.cursorEl) return
+
+    this.cursorEl = document.createElement('div')
+    this.cursorEl.style.position = 'absolute'
+    this.cursorEl.style.pointerEvents = 'none'
+    this.cursorEl.style.border = '1px solid #000' // 黑色边框
+    this.cursorEl.style.borderRadius = '50%'
+    this.cursorEl.style.transform = 'translate(-50%, -50%)'
+    this.cursorEl.style.display = 'none'
+    this.cursorEl.style.zIndex = '9999'
+    this.cursorEl.style.boxShadow = '0 0 2px rgba(255, 255, 255, 0.8)' // 白色发光，确保深色背景可见
+
+    // 将光标元素添加到 canvas 的父容器中
+    // 注意：这要求 canvasElement 有一个相对定位的父容器
+    const canvasContainer = this.canvasElement.parentNode
+    if (canvasContainer) {
+      // 确保父容器有定位上下文，如果没有则加上
+      const computedStyle = window.getComputedStyle(canvasContainer)
+      if (computedStyle.position === 'static') {
+        canvasContainer.style.position = 'relative'
+      }
+      canvasContainer.appendChild(this.cursorEl)
+    }
+  }
+
+  /**
+   * 判断是否应该显示自定义光标
+   * @private
+   */
+  _shouldShowCursor() {
+    // 只有在画笔模式或橡皮擦模式下才显示
+    // 注意：setBrush 中我们将 isEraserMode 下的 isDrawingMode 设为 false 了
+    // 所以逻辑是：isEraserMode 为 true 或者 isDrawingMode 为 true
+    return this.isEraserMode || (this.canvas && this.canvas.isDrawingMode)
+  }
+
+  /**
+   * 更新光标大小
+   * @private
+   */
+  _updateCursorSize() {
+    if (!this.cursorEl || !this.canvas || !this.canvas.freeDrawingBrush) return
+
+    const zoom = this.canvas.getZoom()
+    const brushWidth = this.canvas.freeDrawingBrush.width || 1
+    // 光标大小 = 笔刷宽度 * 缩放比例
+    const size = brushWidth * zoom
+
+    this.cursorEl.style.width = `${size}px`
+    this.cursorEl.style.height = `${size}px`
+  }
+
+  /**
+   * 更新光标位置
+   * @private
+   * @param {number} x - 客户端 X 坐标 (相对于视口)
+   * @param {number} y - 客户端 Y 坐标 (相对于视口)
+   */
+  _updateCursorPosition(x, y) {
+    if (!this.cursorEl || !this.canvasElement) return
+
+    // 获取 canvas 容器的边界矩形
+    const rect = this.canvasElement.getBoundingClientRect()
+
+    // 计算相对于 canvas 容器的坐标
+    const left = x - rect.left
+    const top = y - rect.top
+
+    this.cursorEl.style.left = `${left}px`
+    this.cursorEl.style.top = `${top}px`
   }
 
   /**
@@ -326,6 +451,9 @@ export class CanvasManager {
   async _loadCanvasState(json) {
     if (!this.canvas) return
 
+    // 重置涂鸦组引用
+    this.doodleGroup = null
+
     // 记录当前选中的对象 ID
     const activeObject = this.canvas.getActiveObject()
     const currentActiveId = activeObject ? activeObject.id : null
@@ -434,8 +562,7 @@ export class CanvasManager {
         this.canvas.freeDrawingBrush = new fabric.PencilBrush(this.canvas)
       }
 
-      this.canvas.freeDrawingBrush.width = options.width || 5
-      this.canvas.freeDrawingBrush.color = options.color || '#000000'
+      this.setBrush(options)
     }
   }
 
@@ -446,8 +573,44 @@ export class CanvasManager {
   setBrush(options = {}) {
     if (!this.canvas || !this.canvas.freeDrawingBrush) return
 
-    if (options.width) this.canvas.freeDrawingBrush.width = options.width
-    if (options.color) this.canvas.freeDrawingBrush.color = options.color
+    if (options.isEraser !== undefined) {
+      this.isEraserMode = options.isEraser
+    }
+
+    // 设置笔刷宽度
+    if (options.width) {
+      this.canvas.freeDrawingBrush.width = options.width
+    }
+
+    // 设置颜色
+    if (options.color) {
+      this.canvas.freeDrawingBrush.color = options.color
+    }
+
+    // 橡皮擦模式处理
+    if (this.isEraserMode) {
+      // 橡皮擦模式下，禁用原生绘图模式，使用自定义事件实现实时擦除
+      this.canvas.isDrawingMode = false
+      this.canvas.defaultCursor = 'crosshair' // 使用十字光标或其他合适的
+      // 确保对象不可选
+      this.canvas.selection = false
+      this.canvas.getObjects().forEach((obj) => {
+        obj.selectable = false
+      })
+    } else {
+      // 恢复原生绘图模式
+      // 只有在外部开启了绘图模式时才恢复 (通过 setDrawingMode 控制)
+      // 这里假设调用 setBrush 时通常是在绘图模式下
+      // 但为了安全，我们检查一下是否应该处于绘图模式
+      // 简单起见，如果切换回画笔，我们假设就是想画画
+      this.canvas.isDrawingMode = true
+      this.canvas.defaultCursor = 'default'
+      this.canvas.selection = true // 恢复框选? 不，画画时通常也不能框选
+      // 画画模式下 Fabric 会处理 selectable
+    }
+
+    // 更新自定义光标大小
+    this._updateCursorSize()
   }
 
   /**
@@ -493,11 +656,69 @@ export class CanvasManager {
   }
 
   /**
-   * 处理鼠标按下（线条绘制）
+   * 确保涂鸦组存在
+   * @private
+   */
+  _ensureDoodleGroup() {
+    if (!this.canvas) return
+
+    // 尝试在画布上查找已存在的涂鸦组
+    if (!this.doodleGroup) {
+      const existingGroup = this.canvas.getObjects().find((obj) => obj.id === 'doodle-group')
+      if (existingGroup) {
+        this.doodleGroup = existingGroup
+      }
+    }
+
+    // 如果还是没有，创建新的
+    if (!this.doodleGroup) {
+      // 必须开启 objectCaching: true，这样 destination-out 混合模式
+      // 才会只在组内生效（即擦除组内的内容），而不会穿透到组下方的背景
+      this.doodleGroup = new fabric.Group([], {
+        id: 'doodle-group',
+        name: '涂鸦图层',
+        selectable: true,
+        evented: true,
+        objectCaching: true
+      })
+      this.canvas.add(this.doodleGroup)
+    }
+  }
+
+  /**
+   * 将路径添加到涂鸦组
+   * @param {fabric.Path} path
+   */
+  _addToDoodleGroup(path) {
+    this._ensureDoodleGroup()
+
+    if (!this.doodleGroup || !this.canvas) return
+
+    // 从画布移除路径
+    this.canvas.remove(path)
+
+    // Fabric.js v6/v7 中使用 add() 方法
+    this.doodleGroup.add(path)
+
+    // 确保组被标记为脏，以便重新渲染缓存
+    this.doodleGroup.set('dirty', true)
+
+    this.canvas.requestRenderAll()
+  }
+
+  /**
+   * 处理鼠标按下（线条绘制或橡皮擦）
    * @private
    */
   _handleMouseDown(o) {
-    if (!this.isLineDrawingMode || !this.canvas) return
+    if (!this.canvas) return
+
+    if (this.isEraserMode) {
+      this._handleEraserMouseDown(o)
+      return
+    }
+
+    if (!this.isLineDrawingMode) return
 
     // Fabric 6.x 使用 scenePoint 获取坐标
     const pointer = o.scenePoint || this.canvas.getPointer(o.e)
@@ -532,10 +753,40 @@ export class CanvasManager {
   }
 
   /**
-   * 处理鼠标移动（线条绘制）
+   * 处理鼠标移动（线条绘制或橡皮擦）
    * @private
    */
   _handleMouseMove(o) {
+    // 更新自定义光标位置
+    if (this._shouldShowCursor()) {
+      // 隐藏原生光标
+      this.canvas.defaultCursor = 'none'
+      if (this.canvas.freeDrawingBrush) {
+        // 尝试隐藏原生笔刷光标 (Fabric 并没有直接 API 隐藏笔刷光标，但我们可以设 defaultCursor)
+      }
+      // 显示并更新自定义光标
+      if (this.cursorEl) {
+        this.cursorEl.style.display = 'block'
+        this._updateCursorPosition(o.e.clientX, o.e.clientY)
+      }
+    } else {
+      // 恢复光标显示 (如果不在绘图模式)
+      // 注意：这里可能会与 setBrush 中的设置冲突，需要小心
+      // 如果移出绘图模式，cursorEl 会被 mouse:out 或 setBrush 隐藏
+      if (this.cursorEl) this.cursorEl.style.display = 'none'
+      // 恢复默认光标
+      if (!this.isLineDrawingMode && this.canvas) {
+        // this.canvas.defaultCursor = 'default'
+        // 这里不能轻易改回 default，因为可能是 move 或其他状态
+        // 只要不在 drawing 模式，fabric 会自己管理
+      }
+    }
+
+    if (this.isEraserMode) {
+      this._handleEraserMouseMove(o)
+      return
+    }
+
     if (!this.isLineDrawingMode || !this.drawingLineObject || !this.drawingStartPoint) return
 
     // Fabric 6.x 使用 scenePoint 获取坐标
@@ -549,10 +800,15 @@ export class CanvasManager {
   }
 
   /**
-   * 处理鼠标松开（线条绘制）
+   * 处理鼠标松开（线条绘制或橡皮擦）
    * @private
    */
   _handleMouseUp() {
+    if (this.isEraserMode) {
+      this._handleEraserMouseUp()
+      return
+    }
+
     if (!this.isLineDrawingMode || !this.drawingLineObject) return
 
     if (this.currentLineType === 'arrow') {
@@ -622,6 +878,94 @@ export class CanvasManager {
     this._triggerChange()
     this.saveHistory()
     this.endLineDrawing()
+  }
+
+  /**
+   * 处理橡皮擦鼠标按下
+   * @private
+   */
+  _handleEraserMouseDown(o) {
+    this.isErasing = true
+    this._ensureDoodleGroup()
+    const pointer = o.scenePoint || this.canvas.getPointer(o.e)
+    this.eraserPoints = [pointer]
+    this.currentEraserPath = null
+  }
+
+  /**
+   * 处理橡皮擦鼠标移动
+   * @private
+   */
+  _handleEraserMouseMove(o) {
+    if (!this.isErasing) return
+    const pointer = o.scenePoint || this.canvas.getPointer(o.e)
+    this.eraserPoints.push(pointer)
+
+    // 如果点太少，不处理
+    if (this.eraserPoints.length < 2) return
+
+    const pathData = this._getSvgPathFromPoints(this.eraserPoints)
+
+    // 如果已有 path，先移除
+    if (this.currentEraserPath) {
+      this.doodleGroup.remove(this.currentEraserPath)
+    }
+
+    // 创建新 Path
+    this.currentEraserPath = new fabric.Path(pathData, {
+      fill: null,
+      stroke: 'white', // 颜色不重要，destination-out 会处理
+      strokeLineCap: 'round',
+      strokeLineJoin: 'round',
+      strokeWidth: this.canvas.freeDrawingBrush.width || 10,
+      globalCompositeOperation: 'destination-out',
+      selectable: false,
+      evented: false,
+      name: '橡皮擦',
+      id: Date.now().toString()
+    })
+
+    // 添加到 Group
+    this.doodleGroup.add(this.currentEraserPath)
+    this.doodleGroup.set('dirty', true)
+    this.canvas.requestRenderAll()
+  }
+
+  /**
+   * 处理橡皮擦鼠标松开
+   * @private
+   */
+  _handleEraserMouseUp() {
+    this.isErasing = false
+    this.eraserPoints = []
+    this.currentEraserPath = null
+    this.saveHistory()
+    this._triggerChange()
+  }
+
+  /**
+   * 将点数组转换为 SVG Path 字符串
+   * 使用简单的二次贝塞尔曲线平滑
+   * @private
+   */
+  _getSvgPathFromPoints(points) {
+    if (points.length < 2) return ''
+
+    let p1 = points[0]
+    let p2 = points[1]
+    let path = `M ${p1.x} ${p1.y}`
+
+    for (let i = 1; i < points.length; i++) {
+      let midPoint = {
+        x: (p1.x + p2.x) / 2,
+        y: (p1.y + p2.y) / 2
+      }
+      path += ` Q ${p1.x} ${p1.y} ${midPoint.x} ${midPoint.y}`
+      p1 = points[i]
+      if (i < points.length - 1) p2 = points[i + 1]
+    }
+    path += ` L ${p1.x} ${p1.y}`
+    return path
   }
 
   /**

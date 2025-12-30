@@ -1,12 +1,13 @@
 <script setup>
 import { ref, watch } from 'vue'
-import { Picture, Edit, Monitor, Close, EditPen } from '@element-plus/icons-vue'
+import { Picture, Edit, Monitor, Close, EditPen, Delete } from '@element-plus/icons-vue'
 
 const emit = defineEmits(['tool-selected', 'doodle-update'])
 
 const activeDrawer = ref(null)
 const doodleColor = ref('#000000')
 const doodleWidth = ref(5)
+const isEraser = ref(false)
 
 const tools = [
   { id: 'text', name: '添加文字', icon: Edit, hasDrawer: true },
@@ -50,7 +51,7 @@ const handleToolClick = (tool) => {
       activeDrawer.value = tool.id
       if (isDoodle) {
         emit('tool-selected', 'doodle-start')
-        emit('doodle-update', { color: doodleColor.value, width: doodleWidth.value })
+        emit('doodle-update', { color: doodleColor.value, width: doodleWidth.value, isEraser: isEraser.value })
       }
     }
   } else {
@@ -75,9 +76,9 @@ const handleTextClick = (textType) => {
 }
 
 // 监听涂鸦配置变化
-watch([doodleColor, doodleWidth], ([color, width]) => {
+watch([doodleColor, doodleWidth, isEraser], ([color, width, eraser]) => {
   if (activeDrawer.value === 'doodle') {
-    emit('doodle-update', { color, width })
+    emit('doodle-update', { color, width, isEraser: eraser })
   }
 })
 </script>
@@ -129,12 +130,21 @@ watch([doodleColor, doodleWidth], ([color, width]) => {
 
       <!-- 涂鸦面板 -->
       <div class="drawer-content doodle-settings" v-if="activeDrawer === 'doodle'">
-        <div class="setting-item">
+        <div class="tool-actions">
+          <div class="action-btn" :class="{ active: !isEraser }" @click="isEraser = false" title="画笔">
+            <el-icon><EditPen /></el-icon>
+          </div>
+          <div class="action-btn" :class="{ active: isEraser }" @click="isEraser = true" title="橡皮擦">
+            <el-icon><Delete /></el-icon>
+          </div>
+        </div>
+
+        <div class="setting-item" v-if="!isEraser">
           <span class="label">画笔颜色</span>
           <el-color-picker v-model="doodleColor" />
         </div>
         <div class="setting-item">
-          <span class="label">画笔粗细 ({{ doodleWidth }}px)</span>
+          <span class="label">{{ isEraser ? '橡皮擦大小' : '画笔粗细' }} ({{ doodleWidth }}px)</span>
           <el-slider v-model="doodleWidth" :min="1" :max="50" />
         </div>
       </div>
@@ -222,6 +232,36 @@ watch([doodleColor, doodleWidth], ([color, width]) => {
   border-right: 1px solid $border-color-light;
   z-index: 100;
   box-shadow: 4px 0 8px rgba(0, 0, 0, 0.05);
+}
+
+.tool-actions {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  padding: 16px;
+  border-bottom: 1px solid $border-color-light;
+}
+
+.action-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background-color: $bg-color;
+  color: $text-regular;
+  transition: all 0.2s;
+
+  &:hover {
+    background-color: color.adjust($bg-color, $lightness: -5%);
+  }
+
+  &.active {
+    background-color: $primary-color;
+    color: white;
+  }
 }
 
 .drawer-header {
