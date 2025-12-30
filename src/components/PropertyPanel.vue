@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { Edit, Picture, Menu, Lock, Unlock, View, Hide, Pointer, Refresh } from '@element-plus/icons-vue'
-import settings from '../config/settings'
+import settings from '@/config/settings'
 
 const props = defineProps({
   activeObject: {

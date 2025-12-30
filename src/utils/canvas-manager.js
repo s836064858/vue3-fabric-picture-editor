@@ -1,6 +1,6 @@
 import * as fabric from 'fabric'
 import { initAligningGuidelines } from './aligning-guidelines'
-import settings from '../config/settings'
+import settings from '@/config/settings'
 
 /**
  * 画布管理器

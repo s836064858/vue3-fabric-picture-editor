@@ -1,7 +1,7 @@
 <script setup>
 import { ref, reactive, computed, watch } from 'vue'
 import { Close, Check, Link } from '@element-plus/icons-vue'
-import settings from '../config/settings'
+import settings from '@/config/settings'
 
 const props = defineProps({
   visible: {

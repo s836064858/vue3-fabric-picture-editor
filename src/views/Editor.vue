@@ -2,12 +2,12 @@
 import { ref, onMounted, onUnmounted, computed, watch, nextTick, shallowRef, markRaw } from 'vue'
 import { useStore } from 'vuex'
 import { Edit, RefreshLeft, RefreshRight, Download, Upload, Picture, ZoomIn, ZoomOut, Aim } from '@element-plus/icons-vue'
-import Toolbar from './Toolbar.vue'
-import PropertyPanel from './PropertyPanel.vue'
-import LayerPanel from './LayerPanel.vue'
-import NewCanvasDialog from './NewCanvasDialog.vue'
-import { CanvasManager } from '../utils/canvas-manager'
-import settings from '../config/settings'
+import Toolbar from '@/components/Toolbar.vue'
+import PropertyPanel from '@/components/PropertyPanel.vue'
+import LayerPanel from '@/components/LayerPanel.vue'
+import NewCanvasDialog from '@/components/NewCanvasDialog.vue'
+import { CanvasManager } from '@/utils/canvas-manager'
+import settings from '@/config/settings'
 
 const store = useStore()
 
