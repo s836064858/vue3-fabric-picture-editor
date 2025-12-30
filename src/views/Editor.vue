@@ -278,14 +278,49 @@ watch(activeObjectId, (newId) => {
 // 处理工具栏事件
 const handleToolSelected = (tool) => {
   if (!canvasManager.value) return
-  if (tool === 'text') {
-    canvasManager.value.addText()
-  } else if (tool === 'image') {
-    // 触发文件选择
-    document.getElementById('file-input').click()
-  } else if (tool.startsWith('shape-')) {
-    const type = tool.split('-')[1]
-    canvasManager.value.addShape(type)
+
+  const [category, type] = tool.split('-')
+
+  // 除非是涂鸦模式开启，否则重置绘图状态
+  if (category !== 'doodle') {
+    canvasManager.value.setDrawingMode(false)
+  }
+
+  switch (category) {
+    case 'text': {
+      const textConfig = {
+        title: { text: '添加标题', fontSize: 36, fontWeight: 'bold' },
+        subtitle: { text: '添加副标题', fontSize: 24, fontWeight: 'bold' },
+        body: { text: '添加正文内容', fontSize: 16, fontWeight: 'normal' }
+      }
+      if (textConfig[type]) {
+        canvasManager.value.addText(textConfig[type])
+      }
+      break
+    }
+
+    case 'image':
+      // 触发文件选择
+      document.getElementById('file-input').click()
+      break
+
+    case 'shape':
+      if (['line', 'dashed', 'arrow'].includes(type)) {
+        canvasManager.value.startLineDrawing(type)
+      } else {
+        canvasManager.value.addShape(type)
+      }
+      break
+
+    case 'doodle':
+      canvasManager.value.setDrawingMode(type === 'start')
+      break
+  }
+}
+
+const handleDoodleUpdate = (settings) => {
+  if (canvasManager.value) {
+    canvasManager.value.setBrush(settings)
   }
 }
 
@@ -301,9 +336,15 @@ const handleImageReplace = (file) => {
 
 // 处理图片上传
 const handleImageUpload = (e) => {
-  if (!canvasManager.value) return
   const file = e.target.files[0]
   if (!file) return
+
+  // 如果画布未初始化，使用 processImageFile 进行初始化
+  if (!canvasManager.value) {
+    processImageFile(file)
+    e.target.value = ''
+    return
+  }
 
   const reader = new FileReader()
   reader.onload = (f) => {
@@ -523,16 +564,12 @@ const handleZoomInputChange = (val) => {
     </el-header>
 
     <el-container class="main-container">
-      <el-aside width="200px" class="left-panel">
-        <div class="left-panel-content" v-if="isInitialized">
+      <el-aside width="73px" class="left-panel">
+        <div class="left-panel-content">
           <div class="toolbar-container">
-            <Toolbar @tool-selected="handleToolSelected" />
+            <Toolbar @tool-selected="handleToolSelected" @doodle-update="handleDoodleUpdate" />
             <input type="file" id="file-input" accept="image/*" style="display: none" @change="handleImageUpload" />
           </div>
-        </div>
-        <div v-else class="empty-content">
-          <el-icon :size="64" color="#E5E6EB"><Picture /></el-icon>
-          <p>请先【创建画布】</p>
         </div>
       </el-aside>
 
@@ -823,7 +860,6 @@ const handleZoomInputChange = (val) => {
 }
 
 .left-panel {
-  width: 200px;
   background-color: $bg-color-white;
   border-right: 1px solid $border-color-light;
   z-index: 10;
@@ -848,9 +884,9 @@ const handleZoomInputChange = (val) => {
 }
 
 .toolbar-container {
-  padding: 16px 0;
-  display: flex;
-  justify-content: center;
+  padding: 0;
+  height: 100%;
+  width: 100%;
 }
 
 .canvas-area {
@@ -918,6 +954,7 @@ const handleZoomInputChange = (val) => {
   display: flex;
   flex-direction: column;
   padding-bottom: 16px;
+  min-height: 0; /* 关键：允许 flex 子项收缩 */
 
   .panel-title {
     padding: 16px 20px 8px;
@@ -925,6 +962,7 @@ const handleZoomInputChange = (val) => {
     font-size: 14px;
     font-weight: 600;
     color: $text-primary;
+    flex-shrink: 0; /* 标题不收缩 */
   }
 }
 

@@ -29,6 +29,12 @@ export class CanvasManager {
     // 剪贴板
     this._clipboard = null
     this._pasteCount = 0
+
+    // 线条绘制状态
+    this.isLineDrawingMode = false
+    this.currentLineType = null
+    this.drawingLineObject = null
+    this.drawingStartPoint = null
   }
 
   /**
@@ -59,7 +65,8 @@ export class CanvasManager {
     if (image) {
       const imgInstance = new fabric.FabricImage(image)
       imgInstance.set({
-        id: Date.now().toString()
+        id: Date.now().toString(),
+        name: '图片'
       })
       // 确保图片不被拉伸，保持原始大小
       imgInstance.scaleX = 1
@@ -97,12 +104,27 @@ export class CanvasManager {
     this.canvas.on('selection:updated', this._handleSelection.bind(this))
     this.canvas.on('selection:cleared', this._handleSelectionCleared.bind(this))
 
+    // 监听路径创建事件（涂鸦）
+    this.canvas.on('path:created', (opt) => {
+      const path = opt.path
+      path.set({
+        id: Date.now().toString(),
+        name: '涂鸦',
+        selectable: true
+      })
+      this._triggerChange()
+      this.saveHistory()
+    })
+
     // 对象修改事件（用于历史记录）
     this.canvas.on('object:modified', () => this.saveHistory())
 
     // 对象添加事件
     this.canvas.on('object:added', () => {
       if (!this.isHistoryProcessing) {
+        // 绘图模式下，由 path:created 事件负责保存历史记录，避免重复保存
+        if (this.canvas.isDrawingMode) return
+
         this.saveHistory()
         this._triggerChange()
       }
@@ -133,6 +155,11 @@ export class CanvasManager {
     // 文本编辑事件
     this.canvas.on('text:editing:exited', () => this._triggerChange())
     this.canvas.on('text:changed', () => this._triggerChange())
+
+    // 鼠标事件（用于线条绘制）
+    this.canvas.on('mouse:down', this._handleMouseDown.bind(this))
+    this.canvas.on('mouse:move', this._handleMouseMove.bind(this))
+    this.canvas.on('mouse:up', this._handleMouseUp.bind(this))
   }
 
   /**
@@ -195,7 +222,7 @@ export class CanvasManager {
       this.history = this.history.slice(0, this.historyStep + 1)
     }
 
-    const json = JSON.stringify(this.canvas.toJSON())
+    const json = JSON.stringify(this.canvas.toJSON(['id', 'name']))
     this.history.push(json)
     this.historyStep++
 
@@ -305,9 +332,10 @@ export class CanvasManager {
 
     await this.canvas.loadFromJSON(JSON.parse(json))
 
-    // 确保所有对象都有 ID
+    // 确保所有对象都有 ID 和名称
     this.canvas.getObjects().forEach((obj) => {
       if (!obj.id) obj.id = Math.random().toString(36).substr(2, 9)
+      if (!obj.name) obj.name = this._getObjectName(obj)
     })
 
     this.canvas.requestRenderAll()
@@ -327,24 +355,281 @@ export class CanvasManager {
   }
 
   /**
-   * 添加文本对象
+   * 获取对象名称
+   * @private
+   * @param {fabric.Object} obj - Fabric 对象
+   * @returns {string} 对象名称
    */
-  addText() {
+  _getObjectName(obj) {
+    if (obj.name) return obj.name
+
+    const typeNameMap = {
+      rect: '矩形',
+      circle: '圆形',
+      triangle: '三角形',
+      path: '涂鸦',
+      'i-text': '文本',
+      image: '图片'
+    }
+
+    const strategies = {
+      line: (o) => (o.strokeDashArray && o.strokeDashArray.length > 0 ? '虚线' : '直线'),
+      group: (o) => {
+        const subObjects = o.getObjects ? o.getObjects() : []
+        const hasTriangle = subObjects.some((sub) => sub.type === 'triangle')
+        const hasLine = subObjects.some((sub) => sub.type === 'line')
+        return hasTriangle && hasLine ? '箭头' : '组合'
+      }
+    }
+
+    if (strategies[obj.type]) {
+      return strategies[obj.type](obj)
+    }
+
+    return typeNameMap[obj.type] || '未知图层'
+  }
+
+  /**
+   * 添加文本对象
+   * @param {Object} options - 文本配置选项
+   * @param {string} options.text - 文本内容
+   * @param {number} options.fontSize - 字体大小
+   * @param {string} options.fontWeight - 字体粗细
+   */
+  addText(options = {}) {
     const zoom = this.canvas.getZoom()
     const { defaultText, fontFamily, fill, fontSize: defaultFontSize } = settings.objectDefaults.text
-    const fontSize = Math.round(defaultFontSize / zoom)
 
-    const text = new fabric.IText(defaultText, {
+    // 使用传入的选项或默认值
+    const textContent = options.text || defaultText
+    const fontSize = Math.round((options.fontSize || defaultFontSize) / zoom)
+    const fontWeight = options.fontWeight || 'normal'
+
+    const text = new fabric.IText(textContent, {
       fontFamily,
       fill,
       fontSize: fontSize,
-      id: Date.now().toString()
+      fontWeight: fontWeight,
+      id: Date.now().toString(),
+      name: '文本'
     })
     this.canvas.add(text)
     this.canvas.centerObject(text)
     this.canvas.setActiveObject(text)
     this._triggerChange()
     this.saveHistory()
+  }
+
+  /**
+   * 开启/关闭绘图模式
+   * @param {boolean} enabled - 是否开启
+   * @param {Object} options - 笔刷配置
+   */
+  setDrawingMode(enabled, options = {}) {
+    if (!this.canvas) return
+    this.canvas.isDrawingMode = enabled
+
+    if (enabled) {
+      if (!this.canvas.freeDrawingBrush) {
+        this.canvas.freeDrawingBrush = new fabric.PencilBrush(this.canvas)
+      }
+
+      this.canvas.freeDrawingBrush.width = options.width || 5
+      this.canvas.freeDrawingBrush.color = options.color || '#000000'
+    }
+  }
+
+  /**
+   * 设置笔刷属性
+   * @param {Object} options - 笔刷配置
+   */
+  setBrush(options = {}) {
+    if (!this.canvas || !this.canvas.freeDrawingBrush) return
+
+    if (options.width) this.canvas.freeDrawingBrush.width = options.width
+    if (options.color) this.canvas.freeDrawingBrush.color = options.color
+  }
+
+  /**
+   * 开启线条绘制模式
+   * @param {string} type - 线条类型 'line' | 'dashed' | 'arrow'
+   */
+  startLineDrawing(type) {
+    if (!this.canvas) return
+    this.canvas.discardActiveObject()
+    this.canvas.requestRenderAll()
+
+    this.isLineDrawingMode = true
+    this.currentLineType = type
+    this.canvas.defaultCursor = 'crosshair'
+    this.canvas.selection = false // 禁用框选
+
+    // 确保对象不可选
+    this.canvas.getObjects().forEach((obj) => {
+      obj.selectable = false
+    })
+  }
+
+  /**
+   * 结束线条绘制模式
+   */
+  endLineDrawing() {
+    this.isLineDrawingMode = false
+    this.currentLineType = null
+    this.drawingLineObject = null
+    this.drawingStartPoint = null
+
+    if (this.canvas) {
+      this.canvas.defaultCursor = 'default'
+      this.canvas.selection = true
+
+      // 恢复对象可选性 (除了锁定的)
+      this.canvas.getObjects().forEach((obj) => {
+        if (!obj.lockMovementX) {
+          obj.selectable = true
+        }
+      })
+    }
+  }
+
+  /**
+   * 处理鼠标按下（线条绘制）
+   * @private
+   */
+  _handleMouseDown(o) {
+    if (!this.isLineDrawingMode || !this.canvas) return
+
+    // Fabric 6.x 使用 scenePoint 获取坐标
+    const pointer = o.scenePoint || this.canvas.getPointer(o.e)
+    this.drawingStartPoint = pointer
+    const points = [pointer.x, pointer.y, pointer.x, pointer.y]
+    const id = Date.now().toString()
+
+    const commonOptions = {
+      id,
+      stroke: '#000000',
+      strokeWidth: 2,
+      originX: 'center',
+      originY: 'center',
+      selectable: false,
+      evented: false
+    }
+
+    if (this.currentLineType === 'line') {
+      this.drawingLineObject = new fabric.Line(points, commonOptions)
+    } else if (this.currentLineType === 'dashed') {
+      this.drawingLineObject = new fabric.Line(points, {
+        ...commonOptions,
+        strokeDashArray: [10, 5]
+      })
+    } else if (this.currentLineType === 'arrow') {
+      this.drawingLineObject = new fabric.Line(points, commonOptions)
+    }
+
+    if (this.drawingLineObject) {
+      this.canvas.add(this.drawingLineObject)
+    }
+  }
+
+  /**
+   * 处理鼠标移动（线条绘制）
+   * @private
+   */
+  _handleMouseMove(o) {
+    if (!this.isLineDrawingMode || !this.drawingLineObject || !this.drawingStartPoint) return
+
+    // Fabric 6.x 使用 scenePoint 获取坐标
+    const pointer = o.scenePoint || this.canvas.getPointer(o.e)
+
+    if (this.currentLineType === 'arrow' || this.currentLineType === 'line' || this.currentLineType === 'dashed') {
+      this.drawingLineObject.set({ x2: pointer.x, y2: pointer.y })
+    }
+
+    this.canvas.requestRenderAll()
+  }
+
+  /**
+   * 处理鼠标松开（线条绘制）
+   * @private
+   */
+  _handleMouseUp() {
+    if (!this.isLineDrawingMode || !this.drawingLineObject) return
+
+    if (this.currentLineType === 'arrow') {
+      const line = this.drawingLineObject
+      this.canvas.remove(line)
+
+      const dx = line.x2 - line.x1
+      const dy = line.y2 - line.y1
+      const angle = (Math.atan2(dy, dx) * 180) / Math.PI
+      const length = Math.sqrt(dx * dx + dy * dy)
+
+      if (length < 5) {
+        this.endLineDrawing()
+        return
+      }
+
+      const id = Date.now().toString()
+      const center = {
+        left: (line.x1 + line.x2) / 2,
+        top: (line.y1 + line.y2) / 2
+      }
+
+      const arrowLine = new fabric.Line([-(length / 2), 0, length / 2, 0], {
+        stroke: '#000000',
+        strokeWidth: 2,
+        originX: 'center',
+        originY: 'center'
+      })
+
+      const head = new fabric.Triangle({
+        width: 15,
+        height: 15,
+        fill: '#000000',
+        left: length / 2,
+        top: 0,
+        angle: 90,
+        originX: 'center',
+        originY: 'center'
+      })
+
+      const group = new fabric.Group([arrowLine, head], {
+        id,
+        name: '箭头',
+        left: center.left,
+        top: center.top,
+        angle: angle,
+        originX: 'center',
+        originY: 'center'
+      })
+
+      this.canvas.add(group)
+      this.canvas.setActiveObject(group)
+    } else {
+      const nameMap = {
+        line: '直线',
+        dashed: '虚线'
+      }
+      this.drawingLineObject.set({
+        name: nameMap[this.currentLineType] || '线条',
+        selectable: true,
+        evented: true
+      })
+      this.drawingLineObject.setCoords()
+      this.canvas.setActiveObject(this.drawingLineObject)
+    }
+
+    this._triggerChange()
+    this.saveHistory()
+    this.endLineDrawing()
+  }
+
+  /**
+   * 添加线条
+   * @param {string} type - 线条类型 'line' | 'dashed' | 'arrow'
+   */
+  addLine(type) {
+    this.startLineDrawing(type)
   }
 
   /**
@@ -368,17 +653,18 @@ export class CanvasManager {
     }
 
     if (type === 'rect') {
-      shape = new fabric.Rect(options)
+      shape = new fabric.Rect({ ...options, name: '矩形' })
     } else if (type === 'circle') {
       // Circle uses radius instead of width/height
       shape = new fabric.Circle({
         ...options,
+        name: '圆形',
         radius: 50,
         width: 100, // Fabric calculates width as radius * 2
         height: 100
       })
     } else if (type === 'triangle') {
-      shape = new fabric.Triangle(options)
+      shape = new fabric.Triangle({ ...options, name: '三角形' })
     }
 
     if (shape) {
@@ -406,7 +692,8 @@ export class CanvasManager {
       }
 
       imgInstance.set({
-        id: Date.now().toString()
+        id: Date.now().toString(),
+        name: '图片'
       })
 
       this.canvas.add(imgInstance)

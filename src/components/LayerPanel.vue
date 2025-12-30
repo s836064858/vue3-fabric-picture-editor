@@ -60,7 +60,18 @@ const getPreviewContent = (layer) => {
 <template>
   <div class="layer-panel">
     <div v-if="localLayers.length > 0" class="layer-list-container">
-      <draggable v-model="localLayers" item-key="id" handle=".drag-handle" ghost-class="ghost-item" drag-class="drag-item" :animation="200">
+      <draggable
+        v-model="localLayers"
+        item-key="id"
+        handle=".drag-handle"
+        ghost-class="ghost-item"
+        drag-class="drag-item"
+        :animation="200"
+        :force-fallback="true"
+        :scroll="true"
+        :scroll-sensitivity="100"
+        :scroll-speed="20"
+      >
         <template #item="{ element: layer }">
           <div class="layer-item" :class="{ active: layer.id === activeId }" @click="handleSelect(layer)">
             <!-- 拖拽句柄 -->
@@ -135,6 +146,7 @@ const getPreviewContent = (layer) => {
 
 .layer-panel {
   flex: 1;
+  min-height: 0; /* 关键：允许容器收缩产生滚动条 */
   overflow-y: auto;
   padding: 8px 12px;
 }
@@ -142,6 +154,7 @@ const getPreviewContent = (layer) => {
 .layer-list-container {
   display: flex;
   flex-direction: column;
+  user-select: none;
 }
 
 .layer-item {
