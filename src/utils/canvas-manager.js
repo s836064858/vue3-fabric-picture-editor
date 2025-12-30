@@ -525,6 +525,8 @@ export class CanvasManager {
    * @param {string} options.fontWeight - 字体粗细
    */
   addText(options = {}) {
+    this.setDrawingMode(false)
+
     const zoom = this.canvas.getZoom()
     const { defaultText, fontFamily, fill, fontSize: defaultFontSize } = settings.objectDefaults.text
 
@@ -563,6 +565,35 @@ export class CanvasManager {
       }
 
       this.setBrush(options)
+    } else {
+      // 关闭绘图模式时，清理橡皮擦状态
+      this._exitEraserMode()
+    }
+  }
+
+  /**
+   * 退出橡皮擦模式的清理工作
+   * @private
+   */
+  _exitEraserMode() {
+    this.isEraserMode = false
+    this.isErasing = false
+    this.currentEraserPath = null
+    this.eraserPoints = []
+
+    if (this.cursorEl) {
+      this.cursorEl.style.display = 'none'
+    }
+
+    if (this.canvas) {
+      this.canvas.defaultCursor = 'default'
+      // 恢复对象可选性
+      this.canvas.getObjects().forEach((obj) => {
+        if (!obj.lockMovementX) {
+          obj.selectable = true
+        }
+      })
+      this.canvas.selection = true
     }
   }
 
@@ -619,6 +650,8 @@ export class CanvasManager {
    */
   startLineDrawing(type) {
     if (!this.canvas) return
+    this.setDrawingMode(false)
+
     this.canvas.discardActiveObject()
     this.canvas.requestRenderAll()
 
@@ -981,6 +1014,8 @@ export class CanvasManager {
    * @param {string} type - 形状类型 'rect' | 'circle' | 'triangle'
    */
   addShape(type) {
+    this.setDrawingMode(false)
+
     let shape
     const id = Date.now().toString()
     const { fill, width, height } = settings.objectDefaults.shape
@@ -1024,6 +1059,8 @@ export class CanvasManager {
    * @param {string} dataUrl - 图片 DataURL
    */
   addImage(dataUrl) {
+    this.setDrawingMode(false)
+
     const imgObj = new Image()
     imgObj.src = dataUrl
     imgObj.onload = () => {
