@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { Edit, Picture, Menu, Lock, Unlock, View, Hide, Pointer, Refresh } from '@element-plus/icons-vue'
+import settings from '../config/settings'
 
 const props = defineProps({
   activeObject: {
@@ -53,11 +54,6 @@ const handleImageReplace = () => {
   }
   input.click()
 }
-
-// 格式化百分比
-const formatTooltip = (val) => {
-  return `${val}%`
-}
 </script>
 
 <template>
@@ -106,15 +102,7 @@ const formatTooltip = (val) => {
             <div class="prop-label">字体</div>
             <div class="prop-content">
               <el-select :model-value="activeObject.fontFamily" @change="(val) => handleChange('fontFamily', val)" size="default" class="full-width-select">
-                <el-option label="阿里妈妈刀隶体" value="AlimamaDaoLiTi" />
-                <el-option label="阿里妈妈东方大楷" value="AlimamaDongFangDaKai" />
-                <el-option label="阿里妈妈数黑体" value="AlimamaShuHeiTi" />
-                <!-- <el-option label="微软雅黑" value="Microsoft YaHei" />
-                <el-option label="宋体" value="SimSun" />
-                <el-option label="黑体" value="SimHei" />
-                <el-option label="楷体" value="KaiTi" />
-                <el-option label="Arial" value="Arial" /> -->
-                <el-option label="PingFang SC" value="PingFang SC" />
+                <el-option v-for="font in settings.fontFamilies" :key="font.value" :label="font.label" :value="font.value" />
               </el-select>
             </div>
           </div>

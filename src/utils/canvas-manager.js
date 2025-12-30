@@ -1,5 +1,6 @@
 import * as fabric from 'fabric'
 import { initAligningGuidelines } from './aligning-guidelines'
+import settings from '../config/settings'
 
 /**
  * 画布管理器
@@ -23,7 +24,7 @@ export class CanvasManager {
     this.history = []
     this.historyStep = -1
     this.isHistoryProcessing = false
-    this.MAX_HISTORY = 50
+    this.MAX_HISTORY = settings.canvas.maxHistory
 
     // 剪贴板
     this._clipboard = null
@@ -38,7 +39,7 @@ export class CanvasManager {
    * @param {string} config.backgroundColor - 背景颜色
    * @param {HTMLImageElement} [config.image] - 初始背景图片
    */
-  init({ width = 800, height = 600, backgroundColor = '#ffffff', image = null }) {
+  init({ width = settings.canvas.width, height = settings.canvas.height, backgroundColor = settings.canvas.backgroundColor, image = null }) {
     this.originalWidth = width
     this.originalHeight = height
 
@@ -330,11 +331,12 @@ export class CanvasManager {
    */
   addText() {
     const zoom = this.canvas.getZoom()
-    const fontSize = Math.round(24 / zoom)
+    const { defaultText, fontFamily, fill, fontSize: defaultFontSize } = settings.objectDefaults.text
+    const fontSize = Math.round(defaultFontSize / zoom)
 
-    const text = new fabric.IText('双击编辑文本', {
-      fontFamily: 'PingFang SC',
-      fill: '#333333',
+    const text = new fabric.IText(defaultText, {
+      fontFamily,
+      fill,
       fontSize: fontSize,
       id: Date.now().toString()
     })
@@ -352,11 +354,12 @@ export class CanvasManager {
   addShape(type) {
     let shape
     const id = Date.now().toString()
+    const { fill, width, height } = settings.objectDefaults.shape
     const options = {
       id,
-      fill: '#1890ff',
-      width: 100,
-      height: 100,
+      fill,
+      width,
+      height,
       left: this.canvas.width / 2,
       top: this.canvas.height / 2,
       originX: 'center',
@@ -397,8 +400,9 @@ export class CanvasManager {
       const imgInstance = new fabric.FabricImage(imgObj)
 
       // 调整图片大小以适应画布
-      if (imgInstance.width > 400) {
-        imgInstance.scaleToWidth(400)
+      const { maxInitialWidth } = settings.objectDefaults.image
+      if (imgInstance.width > maxInitialWidth) {
+        imgInstance.scaleToWidth(maxInitialWidth)
       }
 
       imgInstance.set({
@@ -623,7 +627,7 @@ export class CanvasManager {
    * 导出为 DataURL
    * @param {Object} options - 导出配置
    */
-  toDataURL(options = { format: 'png', quality: 1, multiplier: 2 }) {
+  toDataURL(options = settings.export) {
     if (!this.canvas) return ''
 
     // 取消选中状态，避免导出选中框
@@ -690,9 +694,7 @@ export class CanvasManager {
 
     let points = []
     let options = {
-      stroke: '#00FFFF', // 青色
-      strokeWidth: 1,
-      strokeDashArray: [5, 5],
+      ...settings.guide,
       selectable: true,
       evented: true,
       lockRotation: true,
@@ -700,7 +702,6 @@ export class CanvasManager {
       hasBorders: false,
       id: Date.now().toString(),
       isGuide: true,
-      excludeFromExport: true,
       originX: 'center',
       originY: 'center'
     }
@@ -727,6 +728,60 @@ export class CanvasManager {
 
     // 参考线不触发 onChange (不作为图层显示)，但保存历史记录
     this.saveHistory()
+  }
+
+  /**
+   * 切换水印显示
+   * @param {boolean} show - 是否显示
+   * @param {string} text - 水印文字
+   */
+  async toggleWatermark(show, text = settings.watermark.defaultText) {
+    if (!this.canvas) return
+
+    if (!show) {
+      this.canvas.overlayImage = null
+      this.canvas.requestRenderAll()
+      return
+    }
+
+    const { fontSize, fontFamily, color, rotate, gridSize, excludeFromExport } = settings.watermark
+
+    // 创建离屏 Canvas 生成水印图案
+    const patternCanvas = document.createElement('canvas')
+    const ctx = patternCanvas.getContext('2d')
+    const size = gridSize // 图案单元大小
+    patternCanvas.width = size
+    patternCanvas.height = size
+
+    // 绘制文字
+    ctx.translate(size / 2, size / 2)
+    ctx.rotate((rotate * Math.PI) / 180)
+    ctx.font = `${fontSize}px ${fontFamily}`
+    ctx.fillStyle = color
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(text, 0, 0)
+
+    // 创建 Pattern
+    const pattern = new fabric.Pattern({
+      source: patternCanvas,
+      repeat: 'repeat'
+    })
+
+    // 创建覆盖层矩形
+    const overlayRect = new fabric.Rect({
+      left: 0,
+      top: 0,
+      width: this.originalWidth,
+      height: this.originalHeight,
+      fill: pattern,
+      selectable: false,
+      evented: false,
+      excludeFromExport: excludeFromExport
+    })
+
+    this.canvas.overlayImage = overlayRect
+    this.canvas.requestRenderAll()
   }
 
   /**

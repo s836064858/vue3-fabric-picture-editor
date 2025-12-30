@@ -7,6 +7,7 @@ import PropertyPanel from './PropertyPanel.vue'
 import LayerPanel from './LayerPanel.vue'
 import NewCanvasDialog from './NewCanvasDialog.vue'
 import { CanvasManager } from '../utils/canvas-manager'
+import settings from '../config/settings'
 
 const store = useStore()
 
@@ -24,6 +25,9 @@ const zoomInputVal = ref(100)
 const isMouseOverCanvas = ref(false)
 const isDragging = ref(false)
 let dragCounter = 0
+
+// 水印状态
+const isWatermarkEnabled = ref(false)
 
 watch(zoom, (newVal) => {
   zoomInputVal.value = Math.round(newVal * 100)
@@ -350,11 +354,7 @@ const handleLayerDelete = (layerId) => {
 const handleExport = () => {
   if (!canvasManager.value) return
 
-  const dataURL = canvasManager.value.toDataURL({
-    format: 'png',
-    quality: 1,
-    multiplier: 2 // 导出2倍图，清晰度更高
-  })
+  const dataURL = canvasManager.value.toDataURL(settings.export)
 
   if (dataURL) {
     const link = document.createElement('a')
@@ -435,6 +435,13 @@ const handleZoomOut = () => {
   }
 }
 
+// 水印控制
+const handleWatermarkChange = (val) => {
+  if (canvasManager.value) {
+    canvasManager.value.toggleWatermark(val)
+  }
+}
+
 // 参考线控制
 const handleGuideCommand = (command) => {
   if (!canvasManager.value) return
@@ -505,6 +512,10 @@ const handleZoomInputChange = (val) => {
       </div>
 
       <div class="actions">
+        <div class="action-item" v-if="isInitialized">
+          <span class="label">水印</span>
+          <el-switch v-model="isWatermarkEnabled" @change="handleWatermarkChange" size="small" />
+        </div>
         <el-button type="primary" v-if="isInitialized" size="small" :icon="Download" @click="handleExport">导出图片</el-button>
       </div>
     </el-header>
@@ -767,6 +778,24 @@ const handleZoomInputChange = (val) => {
       font-size: 18px;
       font-weight: 600;
       color: $text-primary;
+    }
+  }
+
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+
+    .action-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: #606266;
+
+      .label {
+        font-weight: 500;
+      }
     }
   }
 }
