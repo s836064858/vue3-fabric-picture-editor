@@ -574,7 +574,8 @@ export class CanvasManager {
         selectable: !locked
       })
 
-      if (locked && this.canvas.getActiveObject() === object) {
+      // 如果锁定了图层，取消选中状态
+      if (locked) {
         this.canvas.discardActiveObject()
       }
 

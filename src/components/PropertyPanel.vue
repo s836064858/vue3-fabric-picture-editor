@@ -38,6 +38,10 @@ const typeName = computed(() => {
 
 // 通用处理函数
 const handleChange = (property, value) => {
+  // 如果对象被锁定，且尝试修改的不是锁定状态本身，则阻止修改
+  if (props.activeObject && props.activeObject.locked && property !== 'locked') {
+    return
+  }
   emit('property-change', { property, value })
 }
 

@@ -322,6 +322,8 @@ const handlePropertyChange = ({ property, value }) => {
 
 // 处理图层操作
 const handleLayerSelect = (layerId) => {
+  const layer = layers.value.find((l) => l.id === layerId)
+  if (layer && layer.locked) return
   store.dispatch('setActiveObject', layerId)
 }
 
@@ -527,19 +529,6 @@ const handleZoomInputChange = (val) => {
             <Toolbar @tool-selected="handleToolSelected" />
             <input type="file" id="file-input" accept="image/*" style="display: none" @change="handleImageUpload" />
           </div>
-          <div class="panel-divider"></div>
-          <div class="layer-panel-container">
-            <h3 class="panel-title">图层管理</h3>
-            <LayerPanel
-              :layers="layers"
-              :active-id="activeObjectId"
-              @select="handleLayerSelect"
-              @delete="handleLayerDelete"
-              @reorder="handleLayerReorder"
-              @lock="handleLayerLock"
-              @visible="handleLayerVisible"
-            />
-          </div>
         </div>
         <div v-else class="empty-content">
           <el-icon :size="64" color="#E5E6EB"><Picture /></el-icon>
@@ -619,7 +608,22 @@ const handleZoomInputChange = (val) => {
 
       <el-aside width="300px" class="right-panel">
         <div class="right-panel-content" v-if="isInitialized">
-          <PropertyPanel :active-object="activeLayer" @property-change="handlePropertyChange" @image-replace="handleImageReplace" />
+          <div class="property-panel-wrapper">
+            <PropertyPanel :active-object="activeLayer" @property-change="handlePropertyChange" @image-replace="handleImageReplace" />
+          </div>
+          <div class="panel-divider"></div>
+          <div class="layer-panel-container">
+            <h3 class="panel-title">图层管理</h3>
+            <LayerPanel
+              :layers="layers"
+              :active-id="activeObjectId"
+              @select="handleLayerSelect"
+              @delete="handleLayerDelete"
+              @reorder="handleLayerReorder"
+              @lock="handleLayerLock"
+              @visible="handleLayerVisible"
+            />
+          </div>
         </div>
         <div v-else class="empty-content">
           <el-icon :size="64" color="#E5E6EB"><Picture /></el-icon>
@@ -894,7 +898,13 @@ const handleZoomInputChange = (val) => {
   height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.property-panel-wrapper {
   overflow-y: auto;
+  flex-shrink: 0;
+  height: 60%;
 }
 
 .panel-divider {
