@@ -6,7 +6,7 @@ const emit = defineEmits(['tool-selected', 'doodle-update'])
 
 const activeDrawer = ref(null)
 const doodleColor = ref('#000000')
-const doodleWidth = ref(5)
+const doodleWidth = ref(35)
 const isEraser = ref(false)
 
 const tools = [
@@ -145,7 +145,7 @@ watch([doodleColor, doodleWidth, isEraser], ([color, width, eraser]) => {
         </div>
         <div class="setting-item">
           <span class="label">{{ isEraser ? '橡皮擦大小' : '画笔粗细' }} ({{ doodleWidth }}px)</span>
-          <el-slider v-model="doodleWidth" :min="1" :max="50" />
+          <el-slider v-model="doodleWidth" :min="15" :max="200" />
         </div>
       </div>
     </div>
