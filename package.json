@@ -1,8 +1,9 @@
 {
   "name": "Fabix-Editor",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "author": "Shan Yu Hao",
   "scripts": {
     "dev": "vite",
     "build": "vite build && cp dist/index.html dist/404.html",

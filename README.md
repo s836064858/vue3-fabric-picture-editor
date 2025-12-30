@@ -1,57 +1,32 @@
 # Fabix 绘坊 (Vue 3 Image Editor)
 
+[![Vue 3](https://img.shields.io/badge/Vue-3.5-4FC08D?style=flat-square&logo=vue.js)](https://vuejs.org/) [![Fabric.js](https://img.shields.io/badge/Fabric.js-7.0-2c3e50?style=flat-square&logo=javascript)](http://fabricjs.com/) [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE) [![Online Demo](https://img.shields.io/badge/Demo-Online-orange?style=flat-square&logo=github)](https://s836064858.github.io/vue3-fabric-picture-editor/) ![GitHub stars](https://img.shields.io/github/stars/s836064858/vue3-fabric-picture-editor)
+
 > **Vue 画布，随心绘编**
 
-一个基于 Vue 3 + Vite + Fabric.js 开发的轻量级 Web 图片编辑器。
+## 📖 项目定位
 
-## ✨ 功能特性
+Fabix 绘坊是一款基于 **Vue 3** + **Fabric.js** 开发的轻量级 Web 图片编辑器，提供开箱即用的画布编辑能力，旨在为开发者提供一个简单、高效的图片编辑解决方案。
 
-### 🎨 核心编辑
+## ✨ 核心优势
 
-- **画布操作**：支持添加文本、图片，自由拖拽、缩放、旋转。
-- **形状支持**：支持添加矩形、圆形、三角形等基础几何形状，并可自定义填充颜色和大小。
-- **辅助对齐**：移动元素时自动显示对齐辅助线，支持吸附到画布中心和其他元素边缘。
-- **自动居中**：添加新元素时自动居中显示。
-- **智能交互**：
-  - 添加文字时根据当前画布缩放比例自动调整初始字号。
-  - 防误触设计：仅当鼠标悬浮在画布区域时，Delete/Backspace 键才触发删除操作。
+- **轻量高效**：基于 Vue 3 + Vite 构建，秒级启动，零运行时负担。
+- **功能完备**：内置文本、形状、图片编辑及图层管理，满足基础绘图需求。
+- **智能交互**：支持智能辅助对齐、自动吸附、快捷键操作，提升编辑体验。
+- **技术前沿**：采用 Fabric.js v7 最新版，配合 Element Plus UI，现代化开发体验。
 
-### 📝 图层管理
-
-- **可视化列表**：直观的图层列表，支持图片缩略图和文本内容预览。
-- **拖拽排序**：支持拖拽调整图层层级（使用 `vuedraggable`）。
-- **状态控制**：一键锁定/解锁、显示/隐藏图层。
-- **双向同步**：图层面板与属性面板状态实时同步。
-
-### ⚙️ 属性编辑
-
-- **文本样式**：修改字体（支持阿里妈妈系列字体）、字号、颜色、加粗、斜体、下划线、对齐方式等。
-- **形状属性**：支持修改填充颜色（Fill Color）和尺寸。
-- **图片属性**：替换图片源、调整透明度等。
-- **通用属性**：精确调整位置（X/Y）、尺寸（W/H）、旋转角度、翻转。
-
-### 🛠 其他功能
-
-- **历史记录**：支持撤销（Undo）和重做（Redo），快捷键支持（Ctrl+Z / Ctrl+Shift+Z）。
-- **图片导出**：支持导出为 2 倍高清 PNG 图片，自动裁剪掉非画布区域。
-- **友好的空状态**：清晰的 UI 提示引导用户创建画布。
-
-## 📦 技术栈
-
-- **核心框架**: [Vue 3](https://vuejs.org/) (Composition API, `<script setup>`)
-- **构建工具**: [Vite](https://vitejs.dev/)
-- **Canvas 引擎**: [Fabric.js v7](http://fabricjs.com/)
-- **UI 组件库**: [Element Plus](https://element-plus.org/)
-- **状态管理**: [Vuex 4](https://vuex.vuejs.org/)
-- **路由管理**: [Vue Router 4](https://router.vuejs.org/)
-- **CSS 预处理**: Sass
-- **拖拽库**: [vuedraggable](https://github.com/SortableJS/vue.draggable.next)
-
-## 🚀 快速开始
+## 🚀 快速上手
 
 ### 1. 安装依赖
 
 ```bash
+# 克隆项目
+git clone https://github.com/s836064858/vue3-fabric-picture-editor.git
+
+# 进入目录
+cd vue3-fabric-picture-editor
+
+# 安装依赖
 npm install
 ```
 
@@ -61,43 +36,67 @@ npm install
 npm run dev
 ```
 
-### 3. 构建生产版本
+## 📚 完整文档
 
-```bash
-npm run build
-```
+### 🛠 功能特性
 
-## 📂 项目结构
+#### 🎨 核心编辑
+
+- **画布操作**：支持添加文本、图片，自由拖拽、缩放、旋转。
+- **形状支持**：矩形、圆形、三角形等几何形状，自定义填充与尺寸。
+- **辅助对齐**：智能显示对齐辅助线，吸附中心与边缘。
+- **智能交互**：防误触删除、自动居中、字号自适应。
+
+#### 📝 图层管理
+
+- **可视化列表**：直观的图层列表，支持缩略图预览。
+- **拖拽排序**：支持拖拽调整图层层级。
+- **状态控制**：一键锁定/解锁、显示/隐藏。
+
+#### ⚙️ 属性编辑
+
+- **文本样式**：字体（阿里妈妈系列）、字号、颜色、样式、对齐。
+- **通用属性**：精确调整 X/Y 坐标、尺寸、旋转、翻转。
+- **图片属性**：透明度调整、图片替换。
+
+#### ⌨️ 快捷键支持
+
+| 快捷键                 | 功能     | 说明                       |
+| ---------------------- | -------- | -------------------------- |
+| `Delete` / `Backspace` | 删除元素 | 仅当鼠标悬浮在画布上时生效 |
+| `Ctrl + Z`             | 撤销     | Undo                       |
+| `Ctrl + Shift + Z`     | 重做     | Redo                       |
+
+### 📂 项目结构
 
 ```
 src/
-├── assets/          # 静态资源（字体、图标等）
-├── components/      # 业务组件
-│   ├── Editor.vue        # 核心编辑器组件（画布逻辑）
-│   ├── LayerPanel.vue    # 左侧图层面板
-│   ├── PropertyPanel.vue # 右侧属性面板
-│   ├── Toolbar.vue       # 顶部工具栏
-│   └── NewCanvasDialog.vue # 新建画布弹窗
-├── router/          # 路由配置
+├── components/      # 业务组件 (LayerPanel, PropertyPanel...)
+├── views/           # 页面组件 (Editor.vue)
+├── utils/           # 工具函数 (canvas-manager, aligning-guidelines...)
 ├── store/           # Vuex 状态管理
-├── styles/          # 全局样式
-├── utils/           # 工具函数
-│   ├── canvas-manager.js # Fabric.js 封装管理
-│   └── aligning-guidelines.js # 智能对齐辅助线
-├── App.vue          # 根组件
-└── main.js          # 入口文件
+└── styles/          # 全局样式
 ```
 
-## ⌨️ 快捷键支持
+## 🌐 在线 Demo
 
-- `Delete` / `Backspace`: 删除选中元素 (仅当鼠标悬浮在画布上时生效)
-- `Ctrl + Z`: 撤销
-- `Ctrl + Shift + Z` / `Ctrl + Y`: 重做
+[![Online Demo](https://img.shields.io/badge/点击体验-Online_Demo-orange?style=for-the-badge&logo=github)](https://s836064858.github.io/vue3-fabric-picture-editor/)
 
-## 📄 字体说明
+> 本项目支持一键部署到 GitHub Pages：
+>
+> ```bash
+> npm run deploy
+> ```
 
-项目内置了以下字体支持：
+## 🤝 贡献指南
 
-- 阿里妈妈刀隶体
-- 阿里妈妈东方大楷
-- 阿里妈妈数黑体
+欢迎提交 Issue 和 Pull Request！
+
+1. **Fork** 本仓库
+2. 新建 Feat_xxx 分支
+3. 提交代码
+4. 新建 **Pull Request**
+
+## 📄 许可证
+
+本项目采用 [MIT License](LICENSE) 开源许可证。

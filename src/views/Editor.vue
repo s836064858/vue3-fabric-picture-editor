@@ -670,7 +670,7 @@ const handleZoomInputChange = (val) => {
     </el-container>
 
     <!-- 底部版权信息 -->
-    <div class="app-footer">© 2025 Fabix 绘坊. All Rights Reserved.</div>
+    <div class="app-footer">© 2026 Fabix 绘坊. All Rights Reserved.</div>
   </div>
 </template>
 
