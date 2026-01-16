@@ -489,7 +489,13 @@ const handleLayerDelete = (layerId) => {
 const handleExport = () => {
   if (!canvasManager.value) return
 
-  const dataURL = canvasManager.value.toDataURL(settings.export)
+  let dataURL = ''
+  try {
+    dataURL = canvasManager.value.toDataURL(settings.export)
+  } catch (error) {
+    ElMessage.error(error?.message || '导出失败')
+    return
+  }
 
   if (dataURL) {
     const link = document.createElement('a')

@@ -1270,6 +1270,7 @@ export class CanvasManager {
     this.endSelection()
 
     const imgObj = new Image()
+    imgObj.crossOrigin = 'anonymous'
     imgObj.src = dataUrl
     imgObj.onload = () => {
       const imgInstance = new fabric.FabricImage(imgObj)
@@ -1299,6 +1300,7 @@ export class CanvasManager {
     this.endSelection()
 
     const imgObj = new Image()
+    imgObj.crossOrigin = 'anonymous'
     imgObj.src = dataUrl
     imgObj.onload = () => {
       const imgInstance = new fabric.FabricImage(imgObj)
@@ -1355,6 +1357,7 @@ export class CanvasManager {
     if (!activeObject || activeObject.type !== 'image') return
 
     const imgObj = new Image()
+    imgObj.crossOrigin = 'anonymous'
     imgObj.src = dataUrl
     imgObj.onload = () => {
       activeObject.setSrc(dataUrl, () => {
@@ -1578,14 +1581,15 @@ export class CanvasManager {
 
     this.canvas.requestRenderAll()
 
-    const dataUrl = this.canvas.toDataURL(options)
-
-    // 恢复显示状态
-    hiddenObjects.forEach((item) => {
-      item.obj.visible = item.visible
-    })
-
-    this.canvas.requestRenderAll()
+    let dataUrl = ''
+    try {
+      dataUrl = this.canvas.toDataURL(options)
+    } finally {
+      hiddenObjects.forEach((item) => {
+        item.obj.visible = item.visible
+      })
+      this.canvas.requestRenderAll()
+    }
 
     return dataUrl
   }

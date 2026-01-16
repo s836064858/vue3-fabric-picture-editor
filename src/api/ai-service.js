@@ -3,6 +3,29 @@
  * 封装火山引擎 AI 绘图能力
  */
 
+function blobToDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(new Error('图片解析失败'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+async function fetchImageAsDataURL(url) {
+  let response = null
+  try {
+    response = await fetch(url, { cache: 'no-store' })
+  } catch (error) {
+    throw new Error('图片下载失败（可能是跨域限制），无法用于导出')
+  }
+  if (!response.ok) throw new Error(`图片下载失败: ${response.status}`)
+  const blob = await response.blob()
+  const dataUrl = await blobToDataURL(blob)
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) throw new Error('图片解析失败')
+  return dataUrl
+}
+
 /**
  * 调用 AI 消除接口
  * @param {Object} params
@@ -47,7 +70,7 @@ export async function callAIElimination({
     if (data.data && data.data.length > 0) {
       const result = data.data[0]
       // 如果返回的是 url
-      if (result.url) return result.url
+      if (result.url) return await fetchImageAsDataURL(result.url)
       // 如果返回的是 b64_json
       if (result.b64_json) return `data:image/png;base64,${result.b64_json}`
       // 某些火山接口可能直接返回 binary_data_base64
