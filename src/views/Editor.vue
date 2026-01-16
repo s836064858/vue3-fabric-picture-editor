@@ -1,12 +1,14 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch, nextTick, shallowRef, markRaw } from 'vue'
 import { useStore } from 'vuex'
-import { Edit, RefreshLeft, RefreshRight, Download, Upload, Picture, ZoomIn, ZoomOut, Aim } from '@element-plus/icons-vue'
+import { RefreshLeft, RefreshRight, Download, Upload, Picture, ZoomIn, ZoomOut, Aim } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import Toolbar from '@/components/Toolbar.vue'
 import PropertyPanel from '@/components/PropertyPanel.vue'
 import LayerPanel from '@/components/LayerPanel.vue'
 import NewCanvasDialog from '@/components/NewCanvasDialog.vue'
 import { CanvasManager } from '@/utils/canvas-manager'
+import { callAIElimination, callAIMatting } from '@/api/ai-service'
 import settings from '@/config/settings'
 
 const store = useStore()
@@ -119,7 +121,7 @@ const fitCanvasToScreen = () => {
 // 画布内容变化回调
 const handleCanvasChange = (objects) => {
   // 过滤掉参考线
-  const layerObjects = objects.filter((obj) => !obj.isGuide)
+  const layerObjects = objects.filter((obj) => !obj.isGuide && obj.id !== 'selection-group' && obj.name !== 'AI选区')
 
   // 转换对象为简单数据结构存储在 Vuex
   const layerData = layerObjects.map((obj) => {
@@ -243,7 +245,7 @@ const handlePaste = (e) => {
 }
 
 // 处理拖拽事件
-const handleDragEnter = (e) => {
+const handleDragEnter = () => {
   if (isInitialized.value) return
   dragCounter++
   if (dragCounter === 1) {
@@ -251,7 +253,7 @@ const handleDragEnter = (e) => {
   }
 }
 
-const handleDragLeave = (e) => {
+const handleDragLeave = () => {
   if (isInitialized.value) return
   dragCounter--
   if (dragCounter === 0) {
@@ -275,9 +277,99 @@ watch(activeObjectId, (newId) => {
   }
 })
 
+// 处理 AI 选区模式
+const handleAISelectionMode = (type) => {
+  if (canvasManager.value) {
+    canvasManager.value.startSelection(type)
+  }
+}
+
+// 处理 AI 消除
+const handleAIEliminate = async ({ apiKey, onDone }) => {
+  if (!canvasManager.value) return
+
+  // 1. 检查条件
+  const check = canvasManager.value.canPerformElimination()
+  if (!check.valid) {
+    ElMessage.warning(check.message)
+    onDone()
+    return
+  }
+  if (check.warning) {
+    ElMessage.warning(check.warning)
+  }
+
+  try {
+    // 2. 获取输入图片 (含选区)
+    const inputImage = canvasManager.value.getAIInputImage()
+    if (!inputImage) {
+      ElMessage.error('获取图片数据失败')
+      onDone()
+      return
+    }
+
+    // 3. 调用 API
+    const size = `${canvasManager.value.originalWidth}x${canvasManager.value.originalHeight}`
+    const resultBase64 = await callAIElimination({ apiKey, image: inputImage, size })
+
+    // 4. 更新画布
+    canvasManager.value.clearSelection()
+    canvasManager.value.hideEliminationBaseLayer()
+    canvasManager.value.addEliminationResultImage(resultBase64)
+
+    ElMessage.success('消除完成')
+  } catch (error) {
+    ElMessage.error(error.message || '消除失败')
+  } finally {
+    onDone()
+  }
+}
+
+const handleAIMatting = async ({ apiKey, onDone }) => {
+  if (!canvasManager.value) return
+
+  const check = canvasManager.value.canPerformMatting()
+  if (!check.valid) {
+    ElMessage.warning(check.message)
+    onDone()
+    return
+  }
+  if (check.warning) {
+    ElMessage.warning(check.warning)
+  }
+
+  try {
+    const inputImage = canvasManager.value.getAIMattingInputImage()
+    if (!inputImage) {
+      ElMessage.error('获取图片数据失败')
+      onDone()
+      return
+    }
+
+    const size = `${canvasManager.value.originalWidth}x${canvasManager.value.originalHeight}`
+    const resultBase64 = await callAIMatting({ apiKey, image: inputImage, size })
+
+    canvasManager.value.clearSelection()
+    canvasManager.value.hideEliminationBaseLayer()
+    canvasManager.value.addEliminationResultImage(resultBase64)
+
+    ElMessage.success('抠图完成')
+  } catch (error) {
+    ElMessage.error(error.message || '抠图失败')
+  } finally {
+    onDone()
+  }
+}
+
 // 处理工具栏事件
 const handleToolSelected = (tool) => {
   if (!canvasManager.value) return
+
+  // 处理停止 AI 选区
+  if (tool === 'ai-stop') {
+    canvasManager.value.endSelection()
+    return
+  }
 
   const [category, type] = tool.split('-')
 
@@ -426,6 +518,9 @@ const handleKeydown = (e) => {
 
   // 如果正在输入缩放比例，不处理删除键
   if (isZoomInputFocused.value) return
+  const activeEl = document.activeElement
+  const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)
+  if (isTyping) return
 
   if (e.key === 'Backspace' || e.key === 'Delete') {
     // 只有当鼠标悬浮在画布区域时才允许删除（避免误删）
@@ -567,7 +662,15 @@ const handleZoomInputChange = (val) => {
       <el-aside width="73px" class="left-panel">
         <div class="left-panel-content">
           <div class="toolbar-container">
-            <Toolbar @tool-selected="handleToolSelected" @doodle-update="handleDoodleUpdate" />
+            <Toolbar
+              :is-initialized="isInitialized"
+              :has-layers="layers.length > 0"
+              @tool-selected="handleToolSelected"
+              @doodle-update="handleDoodleUpdate"
+              @ai-selection-mode="handleAISelectionMode"
+              @ai-eliminate="handleAIEliminate"
+              @ai-matting="handleAIMatting"
+            />
             <input type="file" id="file-input" accept="image/*" style="display: none" @change="handleImageUpload" />
           </div>
         </div>

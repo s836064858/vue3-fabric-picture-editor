@@ -1,19 +1,34 @@
 <script setup>
-import { ref, watch } from 'vue'
-import { Picture, Edit, Monitor, Close, EditPen, Delete } from '@element-plus/icons-vue'
+import { ref, watch, onMounted, computed } from 'vue'
+import { Picture, Edit, Monitor, Close, EditPen, Delete, MagicStick, Crop, Connection } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 
-const emit = defineEmits(['tool-selected', 'doodle-update'])
+const emit = defineEmits(['tool-selected', 'doodle-update', 'ai-selection-mode', 'ai-eliminate', 'ai-matting'])
+
+const props = defineProps({
+  isInitialized: { type: Boolean, default: false },
+  hasLayers: { type: Boolean, default: false }
+})
 
 const activeDrawer = ref(null)
 const doodleColor = ref('#000000')
 const doodleWidth = ref(35)
 const isEraser = ref(false)
 
+// AI 消除相关状态
+const aiSelectionType = ref('smear') // smear, rect, lasso
+const apiKey = ref('')
+const isEliminating = ref(false)
+const isMatting = ref(false)
+
+const isAiActionDisabled = computed(() => !props.isInitialized || !props.hasLayers)
+
 const tools = [
   { id: 'text', name: '添加文字', icon: Edit, hasDrawer: true },
   { id: 'image', name: '上传图片', icon: Picture, hasDrawer: false },
   { id: 'shape', name: '添加形状', icon: Monitor, hasDrawer: true },
-  { id: 'doodle', name: '涂鸦', icon: EditPen, hasDrawer: true }
+  { id: 'doodle', name: '涂鸦', icon: EditPen, hasDrawer: true },
+  { id: 'ai-erase', name: 'AI 消除', icon: MagicStick, hasDrawer: true }
 ]
 
 const basicShapes = [
@@ -36,22 +51,28 @@ const textOptions = [
 
 const handleToolClick = (tool) => {
   const isDoodle = tool.id === 'doodle'
-  const currentIsDoodle = activeDrawer.value === 'doodle'
+  const isAIErase = tool.id === 'ai-erase'
 
-  // 处理涂鸦模式切换
-  if (currentIsDoodle && activeDrawer.value !== tool.id) {
-    emit('tool-selected', 'doodle-stop')
+  // 如果之前是涂鸦或 AI 模式，现在切换了，需要停止之前的模式
+  if ((activeDrawer.value === 'doodle' || activeDrawer.value === 'ai-erase') && activeDrawer.value !== tool.id) {
+    if (activeDrawer.value === 'doodle') emit('tool-selected', 'doodle-stop')
+    if (activeDrawer.value === 'ai-erase') emit('tool-selected', 'ai-stop')
   }
 
   if (tool.hasDrawer) {
     if (activeDrawer.value === tool.id) {
       activeDrawer.value = null
       if (isDoodle) emit('tool-selected', 'doodle-stop')
+      if (isAIErase) emit('tool-selected', 'ai-stop')
     } else {
       activeDrawer.value = tool.id
       if (isDoodle) {
         emit('tool-selected', 'doodle-start')
         emit('doodle-update', { color: doodleColor.value, width: doodleWidth.value, isEraser: isEraser.value })
+      }
+      if (isAIErase) {
+        // 默认进入涂抹选区模式
+        handleAISelectionMode('smear')
       }
     }
   } else {
@@ -62,6 +83,7 @@ const handleToolClick = (tool) => {
 
 const handleCloseDrawer = () => {
   if (activeDrawer.value === 'doodle') emit('tool-selected', 'doodle-stop')
+  if (activeDrawer.value === 'ai-erase') emit('tool-selected', 'ai-stop')
   activeDrawer.value = null
 }
 
@@ -75,10 +97,70 @@ const handleTextClick = (textType) => {
   activeDrawer.value = null
 }
 
-// 监听涂鸦配置变化
+// AI 选区模式切换
+const handleAISelectionMode = (type) => {
+  if (isAiActionDisabled.value) {
+    ElMessage.warning(props.isInitialized ? '请先添加图层后再使用 AI 功能' : '请先创建画布或打开图片')
+    return
+  }
+  aiSelectionType.value = type
+  emit('ai-selection-mode', type)
+  // 如果是涂抹模式，也需要发送画笔更新事件（设置画笔大小）
+  if (type === 'smear') {
+    emit('doodle-update', { width: doodleWidth.value })
+  }
+}
+
+// 执行 AI 消除
+const handleEliminate = () => {
+  if (isAiActionDisabled.value) {
+    ElMessage.warning(props.isInitialized ? '请先添加图层后再使用 AI 功能' : '请先创建画布或打开图片')
+    return
+  }
+  if (!apiKey.value) {
+    ElMessage.warning('请输入 API Key（可在火山方舟控制台获取）')
+    return
+  }
+  // 保存 Key
+  localStorage.setItem('volcengine_api_key', apiKey.value)
+
+  isEliminating.value = true
+  emit('ai-eliminate', {
+    apiKey: apiKey.value,
+    onDone: () => (isEliminating.value = false)
+  })
+}
+
+const handleMatting = () => {
+  if (isAiActionDisabled.value) {
+    ElMessage.warning(props.isInitialized ? '请先添加图层后再使用 AI 功能' : '请先创建画布或打开图片')
+    return
+  }
+  if (!apiKey.value) {
+    ElMessage.warning('请输入 API Key（可在火山方舟控制台获取）')
+    return
+  }
+  localStorage.setItem('volcengine_api_key', apiKey.value)
+
+  isMatting.value = true
+  emit('ai-matting', {
+    apiKey: apiKey.value,
+    onDone: () => (isMatting.value = false)
+  })
+}
+
+onMounted(() => {
+  const savedKey = localStorage.getItem('volcengine_api_key')
+  if (savedKey) apiKey.value = savedKey
+})
+
+// 监听配置变化
 watch([doodleColor, doodleWidth, isEraser], ([color, width, eraser]) => {
   if (activeDrawer.value === 'doodle') {
     emit('doodle-update', { color, width, isEraser: eraser })
+  } else if (activeDrawer.value === 'ai-erase' && aiSelectionType.value === 'smear') {
+    // AI 模式下只同步宽度
+    emit('doodle-update', { width })
   }
 })
 </script>
@@ -147,6 +229,65 @@ watch([doodleColor, doodleWidth, isEraser], ([color, width, eraser]) => {
           <span class="label">{{ isEraser ? '橡皮擦大小' : '画笔粗细' }} ({{ doodleWidth }}px)</span>
           <el-slider v-model="doodleWidth" :min="15" :max="200" />
         </div>
+      </div>
+
+      <!-- AI 消除面板 -->
+      <div class="drawer-content ai-settings" v-if="activeDrawer === 'ai-erase'">
+        <div class="section-title">选区工具</div>
+        <div class="tool-actions">
+          <div
+            class="action-btn"
+            :class="{ active: aiSelectionType === 'smear', disabled: isAiActionDisabled }"
+            @click="handleAISelectionMode('smear')"
+            title="涂抹"
+          >
+            <el-icon><EditPen /></el-icon>
+          </div>
+          <div
+            class="action-btn"
+            :class="{ active: aiSelectionType === 'rect', disabled: isAiActionDisabled }"
+            @click="handleAISelectionMode('rect')"
+            title="框选"
+          >
+            <el-icon><Crop /></el-icon>
+          </div>
+          <div
+            class="action-btn"
+            :class="{ active: aiSelectionType === 'lasso', disabled: isAiActionDisabled }"
+            @click="handleAISelectionMode('lasso')"
+            title="圈选"
+          >
+            <el-icon><Connection /></el-icon>
+          </div>
+        </div>
+
+        <div class="setting-item" v-if="aiSelectionType === 'smear'">
+          <span class="label">画笔大小 ({{ doodleWidth }}px)</span>
+          <el-slider v-model="doodleWidth" :min="15" :max="200" />
+        </div>
+
+        <div class="setting-item">
+          <span class="label">API Key</span>
+          <el-input v-model="apiKey" type="password" placeholder="请输入火山引擎 API Key" show-password />
+          <div class="tip-text" style="margin-top: 6px">
+            没有 Key？
+            <el-link type="primary" href="https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey?apikey=%7B%7D" target="_blank" :underline="false">
+              去火山方舟控制台获取
+            </el-link>
+          </div>
+        </div>
+
+        <div class="setting-item" style="margin-top: 20px">
+          <el-button type="primary" :loading="isEliminating" :disabled="isAiActionDisabled" @click="handleEliminate" style="width: 100%">
+            {{ isEliminating ? '消除中...' : '开始消除' }}
+          </el-button>
+        </div>
+        <div class="setting-item" style="margin-top: 12px">
+          <el-button type="default" :loading="isMatting" :disabled="isAiActionDisabled" @click="handleMatting" style="width: 100%">
+            {{ isMatting ? '抠图中...' : '一键抠图（去除背景）' }}
+          </el-button>
+        </div>
+        <div class="tip-text">提示：选区将会被 AI 自动填充消除。若存在多图层，仅对最底层生效。</div>
       </div>
     </div>
   </div>
@@ -261,6 +402,12 @@ watch([doodleColor, doodleWidth, isEraser], ([color, width, eraser]) => {
   &.active {
     background-color: $primary-color;
     color: white;
+  }
+
+  &.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
   }
 }
 
@@ -430,6 +577,18 @@ watch([doodleColor, doodleWidth, isEraser], ([color, width, eraser]) => {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.ai-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+
+  .tip-text {
+    font-size: 12px;
+    color: $text-secondary;
+    line-height: 1.5;
+  }
 }
 
 .setting-item {

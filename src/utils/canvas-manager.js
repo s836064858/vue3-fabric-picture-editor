@@ -43,6 +43,14 @@ export class CanvasManager {
     this.eraserPoints = []
     this.currentEraserPath = null
 
+    // AI 选区相关
+    this.isSelectionMode = false
+    this.selectionType = null // 'smear' | 'rect' | 'lasso'
+    this.selectionGroup = null
+    this.isSelecting = false // 是否正在绘制选区(box/lasso)
+    this.selectionPoints = [] // 圈选点集
+    this.currentSelectionShape = null // 当前正在绘制的选区形状
+
     // 自定义光标元素
     this.cursorEl = null
   }
@@ -121,9 +129,25 @@ export class CanvasManager {
     this.canvas.on('selection:updated', this._handleSelection.bind(this))
     this.canvas.on('selection:cleared', this._handleSelectionCleared.bind(this))
 
-    // 监听路径创建事件（涂鸦）
+    // 监听路径创建事件（涂鸦或选区涂抹）
     this.canvas.on('path:created', (opt) => {
       const path = opt.path
+
+      // 如果是选区模式下的涂抹
+      if (this.isSelectionMode && this.selectionType === 'smear') {
+        path.set({
+          id: Date.now().toString(),
+          name: 'AI选区',
+          selectable: false,
+          evented: false,
+          stroke: 'rgba(0, 191, 255, 0.3)', // 浅蓝色
+          opacity: 1
+        })
+        this._addToSelectionGroup(path)
+        // 选区操作通常不记入常规撤销栈，或者可视需求决定。这里暂不触发 saveHistory 以免混淆图层操作
+        return
+      }
+
       path.set({
         id: Date.now().toString(),
         name: this.isEraserMode ? '橡皮擦' : '涂鸦',
@@ -152,7 +176,8 @@ export class CanvasManager {
     this.canvas.on('object:added', () => {
       if (!this.isHistoryProcessing) {
         // 绘图模式下，由 path:created 事件负责保存历史记录，避免重复保存
-        if (this.canvas.isDrawingMode) return
+        // 选区模式下的对象添加也不触发历史记录
+        if (this.canvas.isDrawingMode || this.isSelectionMode) return
 
         this.saveHistory()
         this._triggerChange()
@@ -164,8 +189,11 @@ export class CanvasManager {
       if (e.target && e.target.id === 'doodle-group') {
         this.doodleGroup = null
       }
+      if (e.target && e.target.id === 'selection-group') {
+        this.selectionGroup = null
+      }
 
-      if (!this.isHistoryProcessing) {
+      if (!this.isHistoryProcessing && !this.isSelectionMode) {
         this.saveHistory()
         this._triggerChange()
       }
@@ -189,7 +217,7 @@ export class CanvasManager {
     this.canvas.on('text:editing:exited', () => this._triggerChange())
     this.canvas.on('text:changed', () => this._triggerChange())
 
-    // 鼠标事件（用于线条绘制）
+    // 鼠标事件（用于线条绘制、橡皮擦、AI选区）
     this.canvas.on('mouse:down', this._handleMouseDown.bind(this))
     this.canvas.on('mouse:move', this._handleMouseMove.bind(this))
     this.canvas.on('mouse:up', this._handleMouseUp.bind(this))
@@ -245,9 +273,8 @@ export class CanvasManager {
    * @private
    */
   _shouldShowCursor() {
-    // 只有在画笔模式或橡皮擦模式下才显示
-    // 注意：setBrush 中我们将 isEraserMode 下的 isDrawingMode 设为 false 了
-    // 所以逻辑是：isEraserMode 为 true 或者 isDrawingMode 为 true
+    // 只有在画笔模式、橡皮擦模式、或AI选区的涂抹模式下才显示
+    if (this.isSelectionMode && this.selectionType === 'smear') return true
     return this.isEraserMode || (this.canvas && this.canvas.isDrawingMode)
   }
 
@@ -451,8 +478,9 @@ export class CanvasManager {
   async _loadCanvasState(json) {
     if (!this.canvas) return
 
-    // 重置涂鸦组引用
+    // 重置引用
     this.doodleGroup = null
+    this.selectionGroup = null
 
     // 记录当前选中的对象 ID
     const activeObject = this.canvas.getActiveObject()
@@ -519,13 +547,11 @@ export class CanvasManager {
 
   /**
    * 添加文本对象
-   * @param {Object} options - 文本配置选项
-   * @param {string} options.text - 文本内容
-   * @param {number} options.fontSize - 字体大小
-   * @param {string} options.fontWeight - 字体粗细
    */
   addText(options = {}) {
     this.setDrawingMode(false)
+    // 确保退出选区模式
+    this.endSelection()
 
     const zoom = this.canvas.getZoom()
     const { defaultText, fontFamily, fill, fontSize: defaultFontSize } = settings.objectDefaults.text
@@ -618,26 +644,30 @@ export class CanvasManager {
       this.canvas.freeDrawingBrush.color = options.color
     }
 
+    if (this.isSelectionMode && this.selectionType === 'smear') {
+      this.isEraserMode = false
+      this.canvas.isDrawingMode = true
+      this.canvas.defaultCursor = 'crosshair'
+      this.canvas.selection = false
+      this.canvas.getObjects().forEach((obj) => {
+        obj.selectable = false
+      })
+      this._updateCursorSize()
+      return
+    }
+
     // 橡皮擦模式处理
     if (this.isEraserMode) {
-      // 橡皮擦模式下，禁用原生绘图模式，使用自定义事件实现实时擦除
       this.canvas.isDrawingMode = false
-      this.canvas.defaultCursor = 'crosshair' // 使用十字光标或其他合适的
-      // 确保对象不可选
+      this.canvas.defaultCursor = 'crosshair'
       this.canvas.selection = false
       this.canvas.getObjects().forEach((obj) => {
         obj.selectable = false
       })
     } else {
-      // 恢复原生绘图模式
-      // 只有在外部开启了绘图模式时才恢复 (通过 setDrawingMode 控制)
-      // 这里假设调用 setBrush 时通常是在绘图模式下
-      // 但为了安全，我们检查一下是否应该处于绘图模式
-      // 简单起见，如果切换回画笔，我们假设就是想画画
       this.canvas.isDrawingMode = true
       this.canvas.defaultCursor = 'default'
-      this.canvas.selection = true // 恢复框选? 不，画画时通常也不能框选
-      // 画画模式下 Fabric 会处理 selectable
+      this.canvas.selection = true
     }
 
     // 更新自定义光标大小
@@ -646,11 +676,11 @@ export class CanvasManager {
 
   /**
    * 开启线条绘制模式
-   * @param {string} type - 线条类型 'line' | 'dashed' | 'arrow'
    */
   startLineDrawing(type) {
     if (!this.canvas) return
     this.setDrawingMode(false)
+    this.endSelection()
 
     this.canvas.discardActiveObject()
     this.canvas.requestRenderAll()
@@ -705,8 +735,6 @@ export class CanvasManager {
 
     // 如果还是没有，创建新的
     if (!this.doodleGroup) {
-      // 必须开启 objectCaching: true，这样 destination-out 混合模式
-      // 才会只在组内生效（即擦除组内的内容），而不会穿透到组下方的背景
       this.doodleGroup = new fabric.Group([], {
         id: 'doodle-group',
         name: '涂鸦图层',
@@ -740,21 +768,80 @@ export class CanvasManager {
   }
 
   /**
-   * 处理鼠标按下（线条绘制或橡皮擦）
+   * 确保选区组存在
+   * @private
+   */
+  _ensureSelectionGroup() {
+    if (!this.canvas) return
+
+    if (!this.selectionGroup) {
+      const existingGroup = this.canvas.getObjects().find((obj) => obj.id === 'selection-group')
+      if (existingGroup) {
+        this.selectionGroup = existingGroup
+      }
+    }
+  }
+
+  /**
+   * 将对象添加到选区组
+   * @private
+   */
+  _addToSelectionGroup(object) {
+    this._markAiSelectionObject(object)
+  }
+
+  _markAiSelectionObject(object) {
+    if (!this.canvas || !object) return
+
+    object.set({
+      selectable: false,
+      evented: false,
+      name: 'AI选区'
+    })
+    object.isAiSelection = true
+    this.canvas.moveObjectTo(object, this.canvas.getObjects().length - 1)
+    this.canvas.requestRenderAll()
+  }
+
+  _getScenePointer(o) {
+    if (!this.canvas) return null
+    if (o?.scenePoint) return o.scenePoint
+    if (o?.pointer) return o.pointer
+    if (o?.absolutePointer) {
+      const vpt = this.canvas.viewportTransform
+      if (!vpt) return o.absolutePointer
+      return fabric.util.transformPoint(o.absolutePointer, fabric.util.invertTransform(vpt))
+    }
+    return this.canvas.getPointer(o.e)
+  }
+
+  /**
+   * 处理鼠标按下
    * @private
    */
   _handleMouseDown(o) {
     if (!this.canvas) return
 
+    // 优先级：橡皮擦 > AI选区 > 线条绘制
     if (this.isEraserMode) {
       this._handleEraserMouseDown(o)
       return
     }
 
-    if (!this.isLineDrawingMode) return
+    if (this.isSelectionMode) {
+      this._handleSelectionMouseDown(o)
+      return
+    }
 
+    if (this.isLineDrawingMode) {
+      this._handleLineMouseDown(o)
+      return
+    }
+  }
+
+  _handleLineMouseDown(o) {
     // Fabric 6.x 使用 scenePoint 获取坐标
-    const pointer = o.scenePoint || this.canvas.getPointer(o.e)
+    const pointer = this._getScenePointer(o)
     this.drawingStartPoint = pointer
     const points = [pointer.x, pointer.y, pointer.x, pointer.y]
     const id = Date.now().toString()
@@ -785,34 +872,75 @@ export class CanvasManager {
     }
   }
 
+  _handleSelectionMouseDown(o) {
+    if (this.selectionType === 'smear') return // Smear handled by freeDrawingBrush
+
+    this.isSelecting = true
+    const pointer = this._getScenePointer(o)
+    this.drawingStartPoint = pointer
+
+    if (this.selectionType === 'rect') {
+      this.currentSelectionShape = new fabric.Rect({
+        left: pointer.x,
+        top: pointer.y,
+        originX: 'left',
+        originY: 'top',
+        width: 0,
+        height: 0,
+        fill: 'rgba(0, 191, 255, 0.3)',
+        stroke: null,
+        selectable: false,
+        evented: false,
+        id: Date.now().toString()
+      })
+      this.canvas.add(this.currentSelectionShape)
+    } else if (this.selectionType === 'lasso') {
+      this.selectionPoints = [{ x: pointer.x, y: pointer.y }]
+      if (this.currentSelectionShape) this.canvas.remove(this.currentSelectionShape)
+      const outline = new fabric.Polyline(this.selectionPoints, {
+        fill: null,
+        stroke: '#000000',
+        strokeWidth: 2,
+        strokeLineCap: 'round',
+        strokeLineJoin: 'round',
+        selectable: false,
+        evented: false,
+        objectCaching: false
+      })
+      const line = new fabric.Polyline(this.selectionPoints, {
+        fill: null,
+        stroke: '#ffffff',
+        strokeWidth: 1,
+        strokeLineCap: 'round',
+        strokeLineJoin: 'round',
+        selectable: false,
+        evented: false,
+        objectCaching: false
+      })
+      this.currentSelectionShape = new fabric.Group([outline, line], {
+        selectable: false,
+        evented: false,
+        objectCaching: false
+      })
+      this.canvas.add(this.currentSelectionShape)
+      this.canvas.moveObjectTo(this.currentSelectionShape, this.canvas.getObjects().length - 1)
+    }
+  }
+
   /**
-   * 处理鼠标移动（线条绘制或橡皮擦）
+   * 处理鼠标移动
    * @private
    */
   _handleMouseMove(o) {
     // 更新自定义光标位置
     if (this._shouldShowCursor()) {
-      // 隐藏原生光标
       this.canvas.defaultCursor = 'none'
-      if (this.canvas.freeDrawingBrush) {
-        // 尝试隐藏原生笔刷光标 (Fabric 并没有直接 API 隐藏笔刷光标，但我们可以设 defaultCursor)
-      }
-      // 显示并更新自定义光标
       if (this.cursorEl) {
         this.cursorEl.style.display = 'block'
         this._updateCursorPosition(o.e.clientX, o.e.clientY)
       }
     } else {
-      // 恢复光标显示 (如果不在绘图模式)
-      // 注意：这里可能会与 setBrush 中的设置冲突，需要小心
-      // 如果移出绘图模式，cursorEl 会被 mouse:out 或 setBrush 隐藏
       if (this.cursorEl) this.cursorEl.style.display = 'none'
-      // 恢复默认光标
-      if (!this.isLineDrawingMode && this.canvas) {
-        // this.canvas.defaultCursor = 'default'
-        // 这里不能轻易改回 default，因为可能是 move 或其他状态
-        // 只要不在 drawing 模式，fabric 会自己管理
-      }
     }
 
     if (this.isEraserMode) {
@@ -820,20 +948,54 @@ export class CanvasManager {
       return
     }
 
-    if (!this.isLineDrawingMode || !this.drawingLineObject || !this.drawingStartPoint) return
-
-    // Fabric 6.x 使用 scenePoint 获取坐标
-    const pointer = o.scenePoint || this.canvas.getPointer(o.e)
-
-    if (this.currentLineType === 'arrow' || this.currentLineType === 'line' || this.currentLineType === 'dashed') {
-      this.drawingLineObject.set({ x2: pointer.x, y2: pointer.y })
+    if (this.isSelectionMode) {
+      this._handleSelectionMouseMove(o)
+      return
     }
 
+    if (this.isLineDrawingMode && this.drawingLineObject && this.drawingStartPoint) {
+      // Fabric 6.x 使用 scenePoint 获取坐标
+      const pointer = o.scenePoint || this.canvas.getPointer(o.e)
+      if (this.currentLineType === 'arrow' || this.currentLineType === 'line' || this.currentLineType === 'dashed') {
+        this.drawingLineObject.set({ x2: pointer.x, y2: pointer.y })
+      }
+      this.canvas.requestRenderAll()
+    }
+  }
+
+  _handleSelectionMouseMove(o) {
+    if (!this.isSelecting) return
+    const pointer = this._getScenePointer(o)
+
+    if (this.selectionType === 'rect') {
+      if (!this.currentSelectionShape) return
+      const startX = this.drawingStartPoint.x
+      const startY = this.drawingStartPoint.y
+
+      this.currentSelectionShape.set({
+        left: startX,
+        top: startY,
+        width: Math.max(0, pointer.x - startX),
+        height: Math.max(0, pointer.y - startY)
+      })
+    } else if (this.selectionType === 'lasso') {
+      this.selectionPoints.push({ x: pointer.x, y: pointer.y })
+      if (!this.currentSelectionShape || this.currentSelectionShape.type !== 'group') return
+      const objects = this.currentSelectionShape._objects || []
+      objects.forEach((obj) => {
+        if (obj.type !== 'polyline') return
+        obj.set('points', this.selectionPoints)
+        obj.setCoords()
+        obj.set('dirty', true)
+      })
+      this.currentSelectionShape.setCoords()
+      this.currentSelectionShape.set('dirty', true)
+    }
     this.canvas.requestRenderAll()
   }
 
   /**
-   * 处理鼠标松开（线条绘制或橡皮擦）
+   * 处理鼠标松开
    * @private
    */
   _handleMouseUp() {
@@ -842,8 +1004,17 @@ export class CanvasManager {
       return
     }
 
-    if (!this.isLineDrawingMode || !this.drawingLineObject) return
+    if (this.isSelectionMode) {
+      this._handleSelectionMouseUp()
+      return
+    }
 
+    if (this.isLineDrawingMode && this.drawingLineObject) {
+      this._handleLineMouseUp()
+    }
+  }
+
+  _handleLineMouseUp() {
     if (this.currentLineType === 'arrow') {
       const line = this.drawingLineObject
       this.canvas.remove(line)
@@ -913,6 +1084,41 @@ export class CanvasManager {
     this.endLineDrawing()
   }
 
+  _handleSelectionMouseUp() {
+    if (this.selectionType === 'smear') return
+
+    this.isSelecting = false
+
+    if (this.selectionType === 'rect') {
+      if (this.currentSelectionShape) {
+        if (this.currentSelectionShape.width > 2 && this.currentSelectionShape.height > 2) {
+          this._addToSelectionGroup(this.currentSelectionShape)
+        } else {
+          this.canvas.remove(this.currentSelectionShape)
+        }
+        this.currentSelectionShape = null
+      }
+    } else if (this.selectionType === 'lasso') {
+      if (this.currentSelectionShape) {
+        this.canvas.remove(this.currentSelectionShape)
+        this.currentSelectionShape = null
+      }
+      if (this.selectionPoints.length > 2) {
+        // 创建闭合多边形
+        const polygon = new fabric.Polygon(this.selectionPoints, {
+          fill: 'rgba(0, 191, 255, 0.3)',
+          stroke: null,
+          selectable: false,
+          evented: false,
+          id: Date.now().toString()
+        })
+        this.canvas.add(polygon)
+        this._addToSelectionGroup(polygon)
+      }
+      this.selectionPoints = []
+    }
+  }
+
   /**
    * 处理橡皮擦鼠标按下
    * @private
@@ -920,7 +1126,7 @@ export class CanvasManager {
   _handleEraserMouseDown(o) {
     this.isErasing = true
     this._ensureDoodleGroup()
-    const pointer = o.scenePoint || this.canvas.getPointer(o.e)
+    const pointer = this._getScenePointer(o)
     this.eraserPoints = [pointer]
     this.currentEraserPath = null
   }
@@ -931,7 +1137,7 @@ export class CanvasManager {
    */
   _handleEraserMouseMove(o) {
     if (!this.isErasing) return
-    const pointer = o.scenePoint || this.canvas.getPointer(o.e)
+    const pointer = this._getScenePointer(o)
     this.eraserPoints.push(pointer)
 
     // 如果点太少，不处理
@@ -1015,6 +1221,7 @@ export class CanvasManager {
    */
   addShape(type) {
     this.setDrawingMode(false)
+    this.endSelection()
 
     let shape
     const id = Date.now().toString()
@@ -1060,6 +1267,7 @@ export class CanvasManager {
    */
   addImage(dataUrl) {
     this.setDrawingMode(false)
+    this.endSelection()
 
     const imgObj = new Image()
     imgObj.src = dataUrl
@@ -1083,6 +1291,59 @@ export class CanvasManager {
       this._triggerChange()
       this.saveHistory()
     }
+  }
+
+  addEliminationResultImage(dataUrl) {
+    if (!this.canvas) return
+    this.setDrawingMode(false)
+    this.endSelection()
+
+    const imgObj = new Image()
+    imgObj.src = dataUrl
+    imgObj.onload = () => {
+      const imgInstance = new fabric.FabricImage(imgObj)
+
+      const scaleX = this.originalWidth && imgInstance.width ? this.originalWidth / imgInstance.width : 1
+      const scaleY = this.originalHeight && imgInstance.height ? this.originalHeight / imgInstance.height : 1
+
+      imgInstance.set({
+        id: Date.now().toString(),
+        name: '图片',
+        left: 0,
+        top: 0,
+        originX: 'left',
+        originY: 'top',
+        scaleX,
+        scaleY
+      })
+
+      this.canvas.add(imgInstance)
+      this.canvas.setActiveObject(imgInstance)
+      this._triggerChange()
+      this.saveHistory()
+    }
+  }
+
+  hideEliminationBaseLayer() {
+    if (!this.canvas) return
+
+    const objects = this.canvas.getObjects()
+    const selectionGroup = this.selectionGroup || objects.find((obj) => obj.id === 'selection-group')
+
+    const realLayers = objects.filter((obj) => {
+      if (obj.isGuide) return false
+      if (obj === selectionGroup || obj.id === 'selection-group') return false
+      if (obj.isAiSelection) return false
+      if (obj === this.doodleGroup || obj.id === 'doodle-group') return false
+      if (obj.type === 'selection') return false
+      if (obj.name === 'AI选区' || obj.name === '涂鸦图层') return false
+      return true
+    })
+
+    const baseLayer = realLayers.find((obj) => obj.visible !== false)
+    if (!baseLayer) return
+
+    this.setLayerVisible(baseLayer.id, false)
   }
 
   /**
@@ -1302,24 +1563,28 @@ export class CanvasManager {
     // 取消选中状态，避免导出选中框
     this.canvas.discardActiveObject()
 
-    // 临时隐藏参考线
+    // 临时隐藏参考线、选区组
     const objects = this.canvas.getObjects()
-    const guides = objects.filter((obj) => obj.isGuide)
-    const originalVisibilities = new Map()
+    const hiddenObjects = []
 
-    guides.forEach((guide) => {
-      originalVisibilities.set(guide, guide.visible)
-      guide.visible = false
+    objects.forEach((obj) => {
+      if (obj.isGuide || obj.id === 'selection-group') {
+        if (obj.visible) {
+          hiddenObjects.push({ obj, visible: true })
+          obj.visible = false
+        }
+      }
     })
 
     this.canvas.requestRenderAll()
 
     const dataUrl = this.canvas.toDataURL(options)
 
-    // 恢复参考线显示状态
-    guides.forEach((guide) => {
-      guide.visible = originalVisibilities.get(guide)
+    // 恢复显示状态
+    hiddenObjects.forEach((item) => {
+      item.obj.visible = item.visible
     })
+
     this.canvas.requestRenderAll()
 
     return dataUrl
@@ -1465,5 +1730,246 @@ export class CanvasManager {
       this.canvas.requestRenderAll()
       this.saveHistory()
     }
+  }
+
+  /**
+   * 开启 AI 选区模式
+   * @param {string} type - 'smear' | 'rect' | 'lasso'
+   */
+  startSelection(type = 'smear') {
+    if (!this.canvas) return
+
+    // 先清理可能存在的绘图/线条模式
+    this.setDrawingMode(false)
+    this.endLineDrawing()
+
+    this.isSelectionMode = true
+    this.selectionType = type
+
+    // 禁用对象选择
+    this.canvas.selection = false
+    this.canvas.defaultCursor = 'crosshair'
+    this.canvas.getObjects().forEach((obj) => (obj.selectable = false))
+    this.canvas.discardActiveObject()
+
+    if (type === 'smear') {
+      // 使用画笔，但颜色设为浅蓝
+      this.canvas.isDrawingMode = true
+      if (!this.canvas.freeDrawingBrush) {
+        this.canvas.freeDrawingBrush = new fabric.PencilBrush(this.canvas)
+      }
+      this.canvas.freeDrawingBrush.color = 'rgba(0, 191, 255, 0.3)'
+      this.canvas.freeDrawingBrush.width = 30 // 默认粗细
+    } else {
+      // rect 和 lasso 由 mouse 事件接管
+      this.canvas.isDrawingMode = false
+    }
+
+    this.canvas.requestRenderAll()
+  }
+
+  /**
+   * 结束 AI 选区模式
+   */
+  endSelection() {
+    this.isSelectionMode = false
+    this.selectionType = null
+    this.isSelecting = false
+    this.selectionPoints = []
+
+    if (this.canvas) {
+      this.canvas.isDrawingMode = false
+      this.canvas.selection = true
+      this.canvas.defaultCursor = 'default'
+      this.canvas.getObjects().forEach((obj) => {
+        if (!obj.lockMovementX) obj.selectable = true
+      })
+    }
+  }
+
+  /**
+   * 清除所有选区
+   */
+  clearSelection() {
+    if (!this.canvas) return
+
+    // 移除 selection group
+    const group = this.canvas.getObjects().find((obj) => obj.id === 'selection-group')
+    if (group) {
+      this.canvas.remove(group)
+      this.selectionGroup = null
+    }
+
+    const selectionObjects = this.canvas.getObjects().filter((obj) => obj.isAiSelection)
+    selectionObjects.forEach((obj) => this.canvas.remove(obj))
+
+    this.canvas.requestRenderAll()
+  }
+
+  /**
+   * 获取最底层图片（原图）
+   */
+  getOriginalImage() {
+    if (!this.canvas) return null
+
+    // 查找最底层的图片对象 (index 0 且 type='image')
+    const objects = this.canvas.getObjects()
+    // 过滤掉非图片对象，比如参考线
+    const images = objects.filter((obj) => obj.type === 'image' && obj.id !== 'selection-group' && !obj.isGuide)
+
+    if (images.length === 0) return null
+
+    // 返回最底层的一个
+    return images[0].toDataURL({ format: 'png' })
+  }
+
+  /**
+   * 获取用于 AI 消除的输入图片 (包含原图和选区)
+   */
+  getAIInputImage() {
+    if (!this.canvas) return null
+
+    const objects = this.canvas.getObjects()
+    const selectionGroup = this.selectionGroup || objects.find((obj) => obj.id === 'selection-group')
+    const selectionObjects = objects.filter((obj) => obj.isAiSelection)
+
+    const realLayers = objects.filter((obj) => {
+      if (obj.isGuide) return false
+      if (obj === selectionGroup || obj.id === 'selection-group') return false
+      if (obj.isAiSelection) return false
+      if (obj === this.doodleGroup || obj.id === 'doodle-group') return false
+      if (obj.type === 'selection') return false
+      if (obj.name === 'AI选区' || obj.name === '涂鸦图层') return false
+      return true
+    })
+
+    const bottomLayer = realLayers.find((obj) => obj.visible !== false)
+    if (!bottomLayer) return null
+
+    const originalVisibilities = new Map()
+    objects.forEach((obj) => {
+      originalVisibilities.set(obj, obj.visible)
+      obj.visible = false
+    })
+
+    bottomLayer.visible = true
+    if (selectionGroup) selectionGroup.visible = true
+    selectionObjects.forEach((obj) => {
+      obj.visible = true
+    })
+
+    this.canvas.requestRenderAll()
+
+    const zoom = this.canvas.getZoom() || 1
+    const dataUrl = this.canvas.toDataURL({ format: 'png', multiplier: 1 / zoom, enableRetinaScaling: false })
+
+    objects.forEach((obj) => {
+      obj.visible = originalVisibilities.get(obj)
+    })
+    this.canvas.requestRenderAll()
+
+    return dataUrl
+  }
+
+  getAIMattingInputImage() {
+    if (!this.canvas) return null
+
+    const objects = this.canvas.getObjects()
+    const selectionGroup = this.selectionGroup || objects.find((obj) => obj.id === 'selection-group')
+
+    const realLayers = objects.filter((obj) => {
+      if (obj.isGuide) return false
+      if (obj === selectionGroup || obj.id === 'selection-group') return false
+      if (obj.isAiSelection) return false
+      if (obj === this.doodleGroup || obj.id === 'doodle-group') return false
+      if (obj.type === 'selection') return false
+      if (obj.name === 'AI选区' || obj.name === '涂鸦图层') return false
+      return true
+    })
+
+    const bottomLayer = realLayers.find((obj) => obj.visible !== false)
+    if (!bottomLayer) return null
+
+    const originalVisibilities = new Map()
+    objects.forEach((obj) => {
+      originalVisibilities.set(obj, obj.visible)
+      obj.visible = false
+    })
+
+    bottomLayer.visible = true
+
+    this.canvas.requestRenderAll()
+
+    const zoom = this.canvas.getZoom() || 1
+    const dataUrl = this.canvas.toDataURL({ format: 'png', multiplier: 1 / zoom, enableRetinaScaling: false })
+
+    objects.forEach((obj) => {
+      obj.visible = originalVisibilities.get(obj)
+    })
+    this.canvas.requestRenderAll()
+
+    return dataUrl
+  }
+
+  /**
+   * 检查是否可以执行消除
+   * @returns {Object} { valid: boolean, message: string }
+   */
+  canPerformElimination() {
+    if (!this.canvas) return { valid: false, message: '画布未初始化' }
+
+    const objects = this.canvas.getObjects()
+
+    const selectionGroup = this.selectionGroup || objects.find((obj) => obj.id === 'selection-group')
+    const selectionObjects = objects.filter((obj) => obj.isAiSelection)
+    const hasLegacyGroupSelection = selectionGroup && selectionGroup.getObjects && selectionGroup.getObjects().length > 0
+    if (!hasLegacyGroupSelection && selectionObjects.length === 0) {
+      return { valid: false, message: '请先创建选区' }
+    }
+
+    const realLayers = objects.filter((obj) => {
+      if (obj.isGuide) return false
+      if (obj === selectionGroup || obj.id === 'selection-group') return false
+      if (obj.isAiSelection) return false
+      if (obj === this.doodleGroup || obj.id === 'doodle-group') return false
+      if (obj.type === 'selection') return false
+      if (obj.name === 'AI选区' || obj.name === '涂鸦图层') return false
+      return true
+    })
+
+    const visibleRealLayers = realLayers.filter((obj) => obj.visible !== false)
+
+    if (visibleRealLayers.length === 0) {
+      return { valid: false, message: '未检测到可处理的底层图层' }
+    }
+
+    if (visibleRealLayers.length > 1) {
+      return { valid: true, warning: '检测到多个图层，仅对最底层画布进行 AI 消除。' }
+    }
+
+    return { valid: true }
+  }
+
+  canPerformMatting() {
+    if (!this.canvas) return { valid: false, message: '画布未初始化' }
+
+    const objects = this.canvas.getObjects()
+
+    const selectionGroup = this.selectionGroup || objects.find((obj) => obj.id === 'selection-group')
+    const realLayers = objects.filter((obj) => {
+      if (obj.isGuide) return false
+      if (obj === selectionGroup || obj.id === 'selection-group') return false
+      if (obj.isAiSelection) return false
+      if (obj === this.doodleGroup || obj.id === 'doodle-group') return false
+      if (obj.type === 'selection') return false
+      if (obj.name === 'AI选区' || obj.name === '涂鸦图层') return false
+      return true
+    })
+
+    const visibleRealLayers = realLayers.filter((obj) => obj.visible !== false)
+    if (visibleRealLayers.length === 0) return { valid: false, message: '未检测到可处理的底层图层' }
+    if (visibleRealLayers.length > 1) return { valid: true, warning: '检测到多个图层，仅对最底层可见图层进行抠图。' }
+
+    return { valid: true }
   }
 }
