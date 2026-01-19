@@ -44,6 +44,60 @@ const layers = computed(() => store.state.layers)
 const activeObjectId = computed(() => store.state.activeObjectId)
 const activeLayer = computed(() => store.getters.activeLayer)
 
+// 文字局部选中时，用于属性面板“回显选区样式”的临时覆盖数据
+const activeTextSelectionStyle = ref(null)
+
+const TEXT_STYLE_KEYS = ['fill', 'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'underline', 'linethrough']
+
+function getObjectLockedState(object) {
+  if (!object) return false
+  // 仅当移动/旋转/缩放都锁定时，才认为“图层锁定”
+  return !!(object.lockMovementX && object.lockMovementY && object.lockRotation && object.lockScalingX && object.lockScalingY)
+}
+
+function getTextBaseStyle(textObject) {
+  if (!textObject) return null
+  return {
+    fill: textObject.fill,
+    fontSize: textObject.fontSize,
+    fontFamily: textObject.fontFamily,
+    fontWeight: textObject.fontWeight,
+    fontStyle: textObject.fontStyle,
+    underline: textObject.underline,
+    linethrough: textObject.linethrough
+  }
+}
+
+function getUniformTextSelectionStyle({ textObject, selectionStart, selectionEnd }) {
+  if (!textObject || textObject.type !== 'i-text') return null
+  if (typeof selectionStart !== 'number' || typeof selectionEnd !== 'number') return null
+  if (selectionStart >= selectionEnd) return null
+
+  const base = getTextBaseStyle(textObject)
+  const styles = textObject.getSelectionStyles(selectionStart, selectionEnd) || []
+
+  const result = { ...base }
+
+  // 只有当“选区内所有字符的某个属性值一致”时，才回显该值；否则回退到对象基础值
+  TEXT_STYLE_KEYS.forEach((key) => {
+    if (!styles.length) return
+    const values = styles.map((style) => (style && style[key] !== undefined ? style[key] : base[key]))
+    const first = values[0]
+    result[key] = values.every((v) => v === first) ? first : base[key]
+  })
+
+  return result
+}
+
+const activeObjectForPanel = computed(() => {
+  const layer = activeLayer.value
+  if (!layer) return null
+
+  const style = activeTextSelectionStyle.value
+  if (!style || style.id !== layer.id || !style.style) return layer
+  return { ...layer, ...style.style }
+})
+
 // 初始化
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
@@ -66,7 +120,8 @@ const initCanvas = (options = {}) => {
     new CanvasManager(canvasRef.value, {
       onChange: handleCanvasChange,
       onSelection: handleSelectionChange,
-      onHistoryChange: handleHistoryChange
+      onHistoryChange: handleHistoryChange,
+      onTextSelectionChange: handleTextSelectionChange
     })
   )
 
@@ -142,7 +197,7 @@ const handleCanvasChange = (objects) => {
       type: obj.type,
       name: name,
       visible: obj.visible,
-      locked: obj.lockMovementX, // 假设锁定是统一的
+      locked: getObjectLockedState(obj),
       text: obj.text || '',
       src: obj.getSrc ? obj.getSrc() : '',
       // 基础变换属性
@@ -174,6 +229,43 @@ const handleCanvasChange = (objects) => {
 // 选中对象变化回调
 const handleSelectionChange = (id) => {
   store.dispatch('setActiveObject', id)
+  if (!id) {
+    activeTextSelectionStyle.value = null
+    return
+  }
+
+  if (activeTextSelectionStyle.value?.id && activeTextSelectionStyle.value.id !== id) {
+    activeTextSelectionStyle.value = null
+  }
+}
+
+const handleTextSelectionChange = (payload) => {
+  if (!payload || !canvasManager.value) {
+    activeTextSelectionStyle.value = null
+    return
+  }
+
+  if (!payload.hasSelectionRange || payload.selectionStart === null || payload.selectionEnd === null) {
+    activeTextSelectionStyle.value = null
+    return
+  }
+
+  const activeObject = canvasManager.value.getActiveObject()
+  if (!activeObject || activeObject.type !== 'i-text' || activeObject.id !== payload.id) {
+    activeTextSelectionStyle.value = null
+    return
+  }
+
+  const style = getUniformTextSelectionStyle({
+    textObject: activeObject,
+    selectionStart: payload.selectionStart,
+    selectionEnd: payload.selectionEnd
+  })
+
+  activeTextSelectionStyle.value = {
+    id: payload.id,
+    style
+  }
 }
 
 // 历史记录变化回调
@@ -755,7 +847,7 @@ const handleZoomInputChange = (val) => {
       <el-aside width="300px" class="right-panel">
         <div class="right-panel-content" v-if="isInitialized">
           <div class="property-panel-wrapper">
-            <PropertyPanel :active-object="activeLayer" @property-change="handlePropertyChange" @image-replace="handleImageReplace" />
+            <PropertyPanel :active-object="activeObjectForPanel" @property-change="handlePropertyChange" @image-replace="handleImageReplace" />
           </div>
           <div class="panel-divider"></div>
           <div class="layer-panel-container">
@@ -1024,10 +1116,15 @@ const handleZoomInputChange = (val) => {
   transition: transform 0.2s ease-out;
 
   // 画布背景网格
-  background-image: linear-gradient(45deg, #e6e6e6 25%, transparent 25%), linear-gradient(-45deg, #e6e6e6 25%, transparent 25%),
+  background-image:
+    linear-gradient(45deg, #e6e6e6 25%, transparent 25%), linear-gradient(-45deg, #e6e6e6 25%, transparent 25%),
     linear-gradient(45deg, transparent 75%, #e6e6e6 75%), linear-gradient(-45deg, transparent 75%, #e6e6e6 75%);
   background-size: 20px 20px;
-  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+  background-position:
+    0 0,
+    0 10px,
+    10px -10px,
+    -10px 0px;
 }
 
 .right-panel {

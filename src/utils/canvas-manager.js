@@ -2,6 +2,10 @@ import * as fabric from 'fabric'
 import { initAligningGuidelines } from './aligning-guidelines'
 import settings from '@/config/settings'
 
+// 文字“局部选中”可修改的样式属性（Fabric IText 的 selectionStyles）
+const TEXT_SELECTION_STYLE_KEYS = ['fill', 'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'underline', 'linethrough']
+const TEXT_SELECTION_STYLE_KEY_SET = new Set(TEXT_SELECTION_STYLE_KEYS)
+
 /**
  * 画布管理器
  * 封装 Fabric.js 的核心操作，包括初始化、事件监听、历史记录管理等
@@ -53,6 +57,9 @@ export class CanvasManager {
 
     // 自定义光标元素
     this.cursorEl = null
+
+    // 文本选区缓存：用于用户点击右侧面板导致退出编辑时，仍能对“刚刚选中的区间”应用样式
+    this._lastTextSelection = null
   }
 
   /**
@@ -214,8 +221,20 @@ export class CanvasManager {
     this.canvas.on('object:rotating', throttleTriggerChange)
 
     // 文本编辑事件
-    this.canvas.on('text:editing:exited', () => this._triggerChange())
-    this.canvas.on('text:changed', () => this._triggerChange())
+    this.canvas.on('text:editing:entered', (e) => {
+      this._emitTextSelectionChange(e?.target)
+    })
+    this.canvas.on('text:editing:exited', (e) => {
+      this._triggerChange()
+      this._emitTextSelectionChange(e?.target)
+    })
+    this.canvas.on('text:selection:changed', (e) => {
+      this._emitTextSelectionChange(e?.target)
+    })
+    this.canvas.on('text:changed', (e) => {
+      this._triggerChange()
+      this._emitTextSelectionChange(e?.target)
+    })
 
     // 鼠标事件（用于线条绘制、橡皮擦、AI选区）
     this.canvas.on('mouse:down', this._handleMouseDown.bind(this))
@@ -235,6 +254,37 @@ export class CanvasManager {
     // 监听缩放，更新光标大小
     this.canvas.on('mouse:wheel', () => {
       this._updateCursorSize()
+    })
+  }
+
+  /**
+   * 对外抛出文本选区变化（用于属性面板回显）
+   * @private
+   */
+  _emitTextSelectionChange(target) {
+    if (!this.options?.onTextSelectionChange) return
+
+    const activeObject = target || this.canvas?.getActiveObject?.()
+    if (!activeObject || activeObject.type !== 'i-text') {
+      this._lastTextSelection = null
+      this.options.onTextSelectionChange(null)
+      return
+    }
+
+    const selectionStart = typeof activeObject.selectionStart === 'number' ? activeObject.selectionStart : null
+    const selectionEnd = typeof activeObject.selectionEnd === 'number' ? activeObject.selectionEnd : null
+    const hasSelectionRange = selectionStart !== null && selectionEnd !== null && selectionStart < selectionEnd
+
+    if (hasSelectionRange) {
+      this._lastTextSelection = { id: activeObject.id || null, start: selectionStart, end: selectionEnd }
+    }
+
+    this.options.onTextSelectionChange({
+      id: activeObject.id || null,
+      isEditing: !!activeObject.isEditing,
+      selectionStart,
+      selectionEnd,
+      hasSelectionRange
     })
   }
 
@@ -327,6 +377,8 @@ export class CanvasManager {
       if (this.options.onSelection) {
         this.options.onSelection(selected.id)
       }
+
+      this._emitTextSelectionChange(selected)
     }
   }
 
@@ -338,6 +390,7 @@ export class CanvasManager {
     if (this.options.onSelection) {
       this.options.onSelection(null)
     }
+    this._emitTextSelectionChange(null)
   }
 
   /**
@@ -1377,6 +1430,11 @@ export class CanvasManager {
     const activeObject = this.canvas.getActiveObject()
     if (!activeObject) return
 
+    if (this._canApplyITextSelectionStyle(activeObject, property)) {
+      this._applyITextSelectionStyle(activeObject, property, value)
+      return
+    }
+
     if (property === 'fontFamily' && document.fonts) {
       // 字体特殊处理
       this._handleFontFamilyChange(activeObject, value)
@@ -1403,6 +1461,81 @@ export class CanvasManager {
     this.canvas.requestRenderAll()
     this._triggerChange()
     this.saveHistory()
+  }
+
+  /**
+   * 获取用于“局部选中样式”的文字选区范围
+   * - 优先用当前 selectionStart/End
+   * - 若已退出编辑（isEditing=false）导致选区丢失，则回退到缓存范围
+   * @private
+   */
+  _getITextSelectionRangeForStyle(activeObject) {
+    if (!activeObject || activeObject.type !== 'i-text') return null
+
+    const selectionStart = activeObject.selectionStart
+    const selectionEnd = activeObject.selectionEnd
+
+    if (typeof selectionStart === 'number' && typeof selectionEnd === 'number' && selectionStart < selectionEnd) {
+      return { start: selectionStart, end: selectionEnd }
+    }
+
+    // 仍在编辑但没有选区（光标态），不要用缓存，避免误改到上一次选区
+    if (activeObject.isEditing) return null
+
+    const cached = this._lastTextSelection
+    if (!cached || !cached.id || cached.id !== activeObject.id) return null
+
+    const textLength = typeof activeObject.text === 'string' ? activeObject.text.length : 0
+    if (cached.start < 0 || cached.end > textLength) return null
+
+    return { start: cached.start, end: cached.end }
+  }
+
+  /**
+   * 判断是否可以把属性应用到文字选区（局部样式）
+   * @private
+   */
+  _canApplyITextSelectionStyle(activeObject, property) {
+    if (!activeObject || activeObject.type !== 'i-text') return false
+    if (property === 'text') return false
+
+    const range = this._getITextSelectionRangeForStyle(activeObject)
+    if (!range) return false
+
+    return TEXT_SELECTION_STYLE_KEY_SET.has(property)
+  }
+
+  /**
+   * 将属性应用到 IText 的选区样式（不会影响未选中的字符）
+   * @private
+   */
+  _applyITextSelectionStyle(activeObject, property, value) {
+    const range = this._getITextSelectionRangeForStyle(activeObject)
+    if (!range) return
+
+    const apply = () => {
+      activeObject.setSelectionStyles({ [property]: value }, range.start, range.end)
+      activeObject.dirty = true
+      activeObject.setCoords()
+      this.canvas.requestRenderAll()
+      this._triggerChange()
+      this.saveHistory()
+      this._lastTextSelection = { id: activeObject.id || null, start: range.start, end: range.end }
+      this._emitTextSelectionChange(activeObject)
+    }
+
+    if (property === 'fontFamily' && document.fonts) {
+      const fontString = `${activeObject.fontStyle || 'normal'} ${activeObject.fontWeight || 'normal'} ${activeObject.fontSize || 24}px "${value}"`
+      document.fonts
+        .load(fontString)
+        .then(() => apply())
+        .catch((err) => {
+          console.error('字体加载失败:', err)
+        })
+      return
+    }
+
+    apply()
   }
 
   /**
