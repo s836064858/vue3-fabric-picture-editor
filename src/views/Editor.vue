@@ -7,7 +7,7 @@ import Toolbar from '@/components/Toolbar.vue'
 import PropertyPanel from '@/components/PropertyPanel.vue'
 import LayerPanel from '@/components/LayerPanel.vue'
 import NewCanvasDialog from '@/components/NewCanvasDialog.vue'
-import { CanvasManager } from '@/utils/canvas-manager'
+import { CanvasManager } from '@/utils/canvas-manager/'
 import { callAIElimination, callAIMatting } from '@/api/ai-service'
 import settings from '@/config/settings'
 
