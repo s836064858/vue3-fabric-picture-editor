@@ -205,17 +205,16 @@ const handleImageReplace = () => {
             <div class="prop-content split-2">
               <div class="toggle-row">
                 <el-switch :model-value="!!activeObject.strokeEnabled" @change="(val) => handleChange('strokeEnabled', val)" />
-                <span class="inner-label">启用</span>
               </div>
               <el-color-picker
                 :model-value="activeObject.stroke || '#000000'"
                 show-alpha
-                :disabled="!activeObject.strokeEnabled"
+                v-if="activeObject.strokeEnabled"
                 @change="(val) => handleChange('stroke', val)"
               />
             </div>
           </div>
-          <div class="prop-row">
+          <div v-if="activeObject.strokeEnabled" class="prop-row">
             <div class="prop-label">描边宽</div>
             <div class="prop-content">
               <el-input-number
@@ -226,7 +225,6 @@ const handleImageReplace = () => {
                 @change="(val) => handleChange('strokeWidth', val)"
                 class="gray-input"
                 :controls="true"
-                :disabled="!activeObject.strokeEnabled"
               />
             </div>
           </div>
@@ -239,17 +237,16 @@ const handleImageReplace = () => {
             <div class="prop-content split-2">
               <div class="toggle-row">
                 <el-switch :model-value="!!activeObject.shadowEnabled" @change="(val) => handleChange('shadowEnabled', val)" />
-                <span class="inner-label">启用</span>
               </div>
               <el-color-picker
                 :model-value="activeObject.shadowColor || 'rgba(0, 0, 0, 0.3)'"
                 show-alpha
-                :disabled="!activeObject.shadowEnabled"
+                v-if="activeObject.shadowEnabled"
                 @change="(val) => handleChange('shadowColor', val)"
               />
             </div>
           </div>
-          <div class="prop-row">
+          <div v-if="activeObject.shadowEnabled" class="prop-row">
             <div class="prop-label">模糊</div>
             <div class="prop-content">
               <el-input-number
@@ -260,11 +257,10 @@ const handleImageReplace = () => {
                 @change="(val) => handleChange('shadowBlur', val)"
                 class="gray-input"
                 :controls="true"
-                :disabled="!activeObject.shadowEnabled"
               />
             </div>
           </div>
-          <div class="prop-row">
+          <div v-if="activeObject.shadowEnabled" class="prop-row">
             <div class="prop-label">偏移</div>
             <div class="prop-content split-2">
               <div class="input-with-inner-label">
@@ -274,7 +270,6 @@ const handleImageReplace = () => {
                   @change="(val) => handleChange('shadowOffsetX', val)"
                   class="gray-input"
                   :controls="false"
-                  :disabled="!activeObject.shadowEnabled"
                 />
                 <span class="inner-label">X</span>
               </div>
@@ -285,7 +280,6 @@ const handleImageReplace = () => {
                   @change="(val) => handleChange('shadowOffsetY', val)"
                   class="gray-input"
                   :controls="false"
-                  :disabled="!activeObject.shadowEnabled"
                 />
                 <span class="inner-label">Y</span>
               </div>
@@ -633,10 +627,15 @@ const handleImageReplace = () => {
     border-radius: 4px;
     border: 1px solid #e5e6eb;
     cursor: pointer;
-    background-image: linear-gradient(45deg, #eee 25%, transparent 25%), linear-gradient(-45deg, #eee 25%, transparent 25%),
-      linear-gradient(45deg, transparent 75%, #eee 75%), linear-gradient(-45deg, transparent 75%, #eee 75%);
+    background-image:
+      linear-gradient(45deg, #eee 25%, transparent 25%), linear-gradient(-45deg, #eee 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #eee 75%),
+      linear-gradient(-45deg, transparent 75%, #eee 75%);
     background-size: 10px 10px;
-    background-position: 0 0, 0 5px, 5px -5px, -5px 0px;
+    background-position:
+      0 0,
+      0 5px,
+      5px -5px,
+      -5px 0px;
   }
 
   .hidden-picker {
