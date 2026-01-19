@@ -2,6 +2,30 @@ import * as fabric from 'fabric'
 import settings from '@/config/settings'
 import { TEXT_SELECTION_STYLE_KEY_SET } from './constants'
 
+function getShadowConfigFromObject({ activeObject }) {
+  const shadow = activeObject?.shadow || null
+  return {
+    color: shadow?.color || 'rgba(0, 0, 0, 0.3)',
+    blur: shadow?.blur || 0,
+    offsetX: shadow?.offsetX || 0,
+    offsetY: shadow?.offsetY || 0
+  }
+}
+
+function applyShadowProperty({ activeObject, property, value }) {
+  const keyMap = {
+    shadowColor: 'color',
+    shadowBlur: 'blur',
+    shadowOffsetX: 'offsetX',
+    shadowOffsetY: 'offsetY'
+  }
+  const config = getShadowConfigFromObject({ activeObject })
+  const targetKey = keyMap[property]
+  if (!targetKey) return
+  config[targetKey] = value
+  activeObject.set({ shadow: new fabric.Shadow(config) })
+}
+
 // objects 负责“对象与图层”的增删改查，以及与属性面板联动的核心逻辑：
 // - setObjectProperty：统一入口，根据对象类型/属性名做分流（含文本局部选中样式）
 // - 图层锁定/可见性/排序：与图层面板一致
@@ -159,6 +183,23 @@ export function applyObjectMethods(CanvasManager) {
 
     if (property === 'fontFamily' && document.fonts) {
       this._handleFontFamilyChange(activeObject, value)
+    } else if (property === 'strokeEnabled') {
+      if (value) {
+        const strokeColor = activeObject.stroke || '#000000'
+        const strokeWidth = activeObject.strokeWidth || 2
+        activeObject.set({ stroke: strokeColor, strokeWidth })
+      } else {
+        activeObject.set({ stroke: null, strokeWidth: 0 })
+      }
+    } else if (property === 'shadowEnabled') {
+      if (value) {
+        const config = getShadowConfigFromObject({ activeObject })
+        activeObject.set({ shadow: new fabric.Shadow(config) })
+      } else {
+        activeObject.set({ shadow: null })
+      }
+    } else if (property === 'shadowColor' || property === 'shadowBlur' || property === 'shadowOffsetX' || property === 'shadowOffsetY') {
+      applyShadowProperty({ activeObject, property, value })
     } else if (property === 'locked') {
       const isLocked = value
       activeObject.set({

@@ -89,6 +89,27 @@ function getUniformTextSelectionStyle({ textObject, selectionStart, selectionEnd
   return result
 }
 
+function getShadowStyleFromObject({ object }) {
+  const shadow = object?.shadow || null
+  if (!shadow || typeof shadow !== 'object') {
+    return {
+      shadowEnabled: false,
+      shadowColor: 'rgba(0, 0, 0, 0.3)',
+      shadowBlur: 0,
+      shadowOffsetX: 0,
+      shadowOffsetY: 0
+    }
+  }
+
+  return {
+    shadowEnabled: true,
+    shadowColor: shadow.color || 'rgba(0, 0, 0, 0.3)',
+    shadowBlur: shadow.blur || 0,
+    shadowOffsetX: shadow.offsetX || 0,
+    shadowOffsetY: shadow.offsetY || 0
+  }
+}
+
 const activeObjectForPanel = computed(() => {
   const layer = activeLayer.value
   if (!layer) return null
@@ -192,6 +213,9 @@ const handleCanvasChange = (objects) => {
       }
     }
 
+    const shadowStyle = getShadowStyleFromObject({ object: obj })
+    const strokeEnabled = !!obj.stroke && (obj.strokeWidth || 0) > 0
+
     return {
       id: obj.id,
       type: obj.type,
@@ -213,6 +237,14 @@ const handleCanvasChange = (objects) => {
       opacity: obj.opacity,
       // 样式属性
       fill: obj.fill,
+      stroke: obj.stroke,
+      strokeWidth: obj.strokeWidth,
+      strokeEnabled,
+      shadowColor: shadowStyle.shadowColor,
+      shadowBlur: shadowStyle.shadowBlur,
+      shadowOffsetX: shadowStyle.shadowOffsetX,
+      shadowOffsetY: shadowStyle.shadowOffsetY,
+      shadowEnabled: shadowStyle.shadowEnabled,
       fontSize: obj.fontSize,
       fontFamily: obj.fontFamily,
       textAlign: obj.textAlign,

@@ -20,6 +20,16 @@ const isShape = computed(() => {
   return props.activeObject && ['rect', 'circle', 'triangle'].includes(props.activeObject.type)
 })
 
+const isText = computed(() => {
+  return props.activeObject && (props.activeObject.type === 'i-text' || props.activeObject.type === 'text')
+})
+
+const canStrokeAndShadow = computed(() => {
+  if (!props.activeObject) return false
+  const type = props.activeObject.type
+  return ['i-text', 'text', 'rect', 'circle', 'triangle'].includes(type)
+})
+
 // 类型名称映射
 const TYPE_NAME_MAP = {
   image: '图片',
@@ -100,7 +110,7 @@ const handleImageReplace = () => {
 
       <div class="property-form">
         <!-- 文本属性区域 (仅文本显示) -->
-        <div v-if="activeObject.type === 'i-text' || activeObject.type === 'text'" class="section-group">
+        <div v-if="isText" class="section-group">
           <!-- 字体 -->
           <div class="prop-row">
             <div class="prop-label">字体</div>
@@ -184,6 +194,101 @@ const handleImageReplace = () => {
             <div class="prop-label">填充</div>
             <div class="prop-content align-center">
               <el-color-picker :model-value="activeObject.fill" show-alpha @change="(val) => handleChange('fill', val)" />
+            </div>
+          </div>
+          <div class="divider"></div>
+        </div>
+
+        <div v-if="canStrokeAndShadow" class="section-group">
+          <div class="prop-row">
+            <div class="prop-label">描边</div>
+            <div class="prop-content split-2">
+              <div class="toggle-row">
+                <el-switch :model-value="!!activeObject.strokeEnabled" @change="(val) => handleChange('strokeEnabled', val)" />
+                <span class="inner-label">启用</span>
+              </div>
+              <el-color-picker
+                :model-value="activeObject.stroke || '#000000'"
+                show-alpha
+                :disabled="!activeObject.strokeEnabled"
+                @change="(val) => handleChange('stroke', val)"
+              />
+            </div>
+          </div>
+          <div class="prop-row">
+            <div class="prop-label">描边宽</div>
+            <div class="prop-content">
+              <el-input-number
+                :model-value="activeObject.strokeWidth || 0"
+                :min="0"
+                :max="50"
+                controls-position="right"
+                @change="(val) => handleChange('strokeWidth', val)"
+                class="gray-input"
+                :controls="true"
+                :disabled="!activeObject.strokeEnabled"
+              />
+            </div>
+          </div>
+          <div class="divider"></div>
+        </div>
+
+        <div v-if="canStrokeAndShadow" class="section-group">
+          <div class="prop-row">
+            <div class="prop-label">阴影</div>
+            <div class="prop-content split-2">
+              <div class="toggle-row">
+                <el-switch :model-value="!!activeObject.shadowEnabled" @change="(val) => handleChange('shadowEnabled', val)" />
+                <span class="inner-label">启用</span>
+              </div>
+              <el-color-picker
+                :model-value="activeObject.shadowColor || 'rgba(0, 0, 0, 0.3)'"
+                show-alpha
+                :disabled="!activeObject.shadowEnabled"
+                @change="(val) => handleChange('shadowColor', val)"
+              />
+            </div>
+          </div>
+          <div class="prop-row">
+            <div class="prop-label">模糊</div>
+            <div class="prop-content">
+              <el-input-number
+                :model-value="activeObject.shadowBlur || 0"
+                :min="0"
+                :max="100"
+                controls-position="right"
+                @change="(val) => handleChange('shadowBlur', val)"
+                class="gray-input"
+                :controls="true"
+                :disabled="!activeObject.shadowEnabled"
+              />
+            </div>
+          </div>
+          <div class="prop-row">
+            <div class="prop-label">偏移</div>
+            <div class="prop-content split-2">
+              <div class="input-with-inner-label">
+                <el-input-number
+                  :model-value="activeObject.shadowOffsetX || 0"
+                  controls-position="right"
+                  @change="(val) => handleChange('shadowOffsetX', val)"
+                  class="gray-input"
+                  :controls="false"
+                  :disabled="!activeObject.shadowEnabled"
+                />
+                <span class="inner-label">X</span>
+              </div>
+              <div class="input-with-inner-label">
+                <el-input-number
+                  :model-value="activeObject.shadowOffsetY || 0"
+                  controls-position="right"
+                  @change="(val) => handleChange('shadowOffsetY', val)"
+                  class="gray-input"
+                  :controls="false"
+                  :disabled="!activeObject.shadowEnabled"
+                />
+                <span class="inner-label">Y</span>
+              </div>
             </div>
           </div>
           <div class="divider"></div>
@@ -566,6 +671,12 @@ const handleImageReplace = () => {
   :deep(.el-input__inner) {
     padding-right: 20px !important;
   }
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .icon-actions {
