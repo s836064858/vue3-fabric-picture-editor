@@ -44,7 +44,10 @@ export function applyEventMethods(CanvasManager) {
       this.saveHistory()
     })
 
-    this.canvas.on('object:modified', () => this.saveHistory())
+    this.canvas.on('object:modified', () => {
+      this.saveHistory()
+      this._triggerChange()
+    })
 
     this.canvas.on('object:added', () => {
       if (!this.isHistoryProcessing) {
@@ -71,10 +74,15 @@ export function applyEventMethods(CanvasManager) {
 
     // 频繁拖动会导致 onChange 触发过密，这里用 requestAnimationFrame 合并到每帧一次
     let rafId = null
-    const throttleTriggerChange = () => {
+    let lastTriggerAt = 0
+    const minInterval = 60
+    const throttleTriggerChange = (e) => {
+      const now = performance.now()
+      if (now - lastTriggerAt < minInterval) return
       if (rafId) return
+      lastTriggerAt = now
       rafId = requestAnimationFrame(() => {
-        this._triggerChange()
+        this._triggerChange({ reason: 'transform', target: e?.target || null })
         rafId = null
       })
     }
@@ -166,9 +174,9 @@ export function applyEventMethods(CanvasManager) {
     this._emitTextSelectionChange(null)
   }
 
-  CanvasManager.prototype._triggerChange = function () {
+  CanvasManager.prototype._triggerChange = function (meta = {}) {
     if (this.options.onChange && this.canvas) {
-      this.options.onChange(this.canvas.getObjects())
+      this.options.onChange(this.canvas.getObjects(), meta)
     }
   }
 

@@ -110,6 +110,61 @@ function getShadowStyleFromObject({ object }) {
   }
 }
 
+function getLayerSnapshot({ object }) {
+  if (!object) return null
+
+  let name = object.name
+  if (!name) {
+    if (object.type === 'i-text' || object.type === 'text') {
+      name = object.text || '文本'
+      if (name.length > 20) {
+        name = name.substring(0, 20) + '...'
+      }
+    } else {
+      name = '图层'
+    }
+  }
+
+  const shadowStyle = getShadowStyleFromObject({ object })
+  const strokeEnabled = !!object.stroke && (object.strokeWidth || 0) > 0
+
+  return {
+    id: object.id,
+    type: object.type,
+    name: name,
+    visible: object.visible,
+    locked: getObjectLockedState(object),
+    text: object.text || '',
+    src: object.getSrc ? object.getSrc() : '',
+    left: object.left,
+    top: object.top,
+    width: object.width * object.scaleX,
+    height: object.height * object.scaleY,
+    scaleX: object.scaleX,
+    scaleY: object.scaleY,
+    angle: object.angle,
+    flipX: object.flipX,
+    flipY: object.flipY,
+    opacity: object.opacity,
+    fill: object.fill,
+    stroke: object.stroke,
+    strokeWidth: object.strokeWidth,
+    strokeEnabled,
+    shadowColor: shadowStyle.shadowColor,
+    shadowBlur: shadowStyle.shadowBlur,
+    shadowOffsetX: shadowStyle.shadowOffsetX,
+    shadowOffsetY: shadowStyle.shadowOffsetY,
+    shadowEnabled: shadowStyle.shadowEnabled,
+    fontSize: object.fontSize,
+    fontFamily: object.fontFamily,
+    textAlign: object.textAlign,
+    fontWeight: object.fontWeight,
+    fontStyle: object.fontStyle,
+    underline: object.underline,
+    linethrough: object.linethrough
+  }
+}
+
 const activeObjectForPanel = computed(() => {
   const layer = activeLayer.value
   if (!layer) return null
@@ -195,65 +250,24 @@ const fitCanvasToScreen = () => {
 }
 
 // 画布内容变化回调
-const handleCanvasChange = (objects) => {
+const handleCanvasChange = (objects, meta = {}) => {
+  if (meta.reason === 'transform' && meta.target) {
+    const target = meta.target
+    if (target.isGuide || target.id === 'selection-group' || target.name === 'AI选区' || target.type === 'activeSelection') {
+      return
+    }
+    const snapshot = getLayerSnapshot({ object: target })
+    if (snapshot) {
+      store.commit('UPDATE_LAYER', { id: snapshot.id, props: snapshot })
+    }
+    return
+  }
+
   // 过滤掉参考线
   const layerObjects = objects.filter((obj) => !obj.isGuide && obj.id !== 'selection-group' && obj.name !== 'AI选区')
 
   // 转换对象为简单数据结构存储在 Vuex
-  const layerData = layerObjects.map((obj) => {
-    let name = obj.name
-    if (!name) {
-      if (obj.type === 'i-text' || obj.type === 'text') {
-        name = obj.text || '文本'
-        if (name.length > 20) {
-          name = name.substring(0, 20) + '...'
-        }
-      } else {
-        name = '图层'
-      }
-    }
-
-    const shadowStyle = getShadowStyleFromObject({ object: obj })
-    const strokeEnabled = !!obj.stroke && (obj.strokeWidth || 0) > 0
-
-    return {
-      id: obj.id,
-      type: obj.type,
-      name: name,
-      visible: obj.visible,
-      locked: getObjectLockedState(obj),
-      text: obj.text || '',
-      src: obj.getSrc ? obj.getSrc() : '',
-      // 基础变换属性
-      left: obj.left,
-      top: obj.top,
-      width: obj.width * obj.scaleX, // 计算实际宽度
-      height: obj.height * obj.scaleY, // 计算实际高度
-      scaleX: obj.scaleX,
-      scaleY: obj.scaleY,
-      angle: obj.angle,
-      flipX: obj.flipX,
-      flipY: obj.flipY,
-      opacity: obj.opacity,
-      // 样式属性
-      fill: obj.fill,
-      stroke: obj.stroke,
-      strokeWidth: obj.strokeWidth,
-      strokeEnabled,
-      shadowColor: shadowStyle.shadowColor,
-      shadowBlur: shadowStyle.shadowBlur,
-      shadowOffsetX: shadowStyle.shadowOffsetX,
-      shadowOffsetY: shadowStyle.shadowOffsetY,
-      shadowEnabled: shadowStyle.shadowEnabled,
-      fontSize: obj.fontSize,
-      fontFamily: obj.fontFamily,
-      textAlign: obj.textAlign,
-      fontWeight: obj.fontWeight,
-      fontStyle: obj.fontStyle,
-      underline: obj.underline,
-      linethrough: obj.linethrough
-    }
-  })
+  const layerData = layerObjects.map((obj) => getLayerSnapshot({ object: obj })).filter(Boolean)
 
   store.dispatch('updateLayers', layerData)
 }
@@ -351,18 +365,28 @@ const handleStartScreenImageUpload = (e) => {
   e.target.value = ''
 }
 
+const addImageFromFile = (file) => {
+  if (!file || !canvasManager.value || !file.type.startsWith('image/')) return
+  const reader = new FileReader()
+  reader.onload = (f) => {
+    canvasManager.value.addImage(f.target.result)
+  }
+  reader.readAsDataURL(file)
+}
+
 // 处理粘贴事件
 const handlePaste = (e) => {
-  // 仅在未初始化（首页）时处理粘贴
-  if (isInitialized.value) return
-
   const items = e.clipboardData?.items
   if (!items) return
 
   for (let i = 0; i < items.length; i++) {
     if (items[i].type.indexOf('image') !== -1) {
       const file = items[i].getAsFile()
-      processImageFile(file)
+      if (isInitialized.value) {
+        addImageFromFile(file)
+      } else {
+        processImageFile(file)
+      }
       break
     }
   }
@@ -370,7 +394,6 @@ const handlePaste = (e) => {
 
 // 处理拖拽事件
 const handleDragEnter = () => {
-  if (isInitialized.value) return
   dragCounter++
   if (dragCounter === 1) {
     isDragging.value = true
@@ -378,7 +401,6 @@ const handleDragEnter = () => {
 }
 
 const handleDragLeave = () => {
-  if (isInitialized.value) return
   dragCounter--
   if (dragCounter === 0) {
     isDragging.value = false
@@ -386,12 +408,15 @@ const handleDragLeave = () => {
 }
 
 const handleDrop = (e) => {
-  if (isInitialized.value) return
   isDragging.value = false
   dragCounter = 0
 
   const file = e.dataTransfer?.files[0]
-  processImageFile(file)
+  if (isInitialized.value) {
+    addImageFromFile(file)
+  } else {
+    processImageFile(file)
+  }
 }
 
 // 监听 Vuex activeObjectId 变化，同步选中状态到 Canvas
@@ -562,11 +587,7 @@ const handleImageUpload = (e) => {
     return
   }
 
-  const reader = new FileReader()
-  reader.onload = (f) => {
-    canvasManager.value.addImage(f.target.result)
-  }
-  reader.readAsDataURL(file)
+  addImageFromFile(file)
   e.target.value = ''
 }
 
